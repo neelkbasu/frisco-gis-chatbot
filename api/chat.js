@@ -44,20 +44,34 @@ const facilityTool = {
   },
 };
 
-// Retry once when Gemini reports temporary throttling or high demand.
+// Retry temporary Gemini failures. The first request is immediate, then
+// retries wait about 1, 2, and 4 seconds (exponential backoff).
 async function callGeminiWithRetry(ai, request) {
-  try {
-    return await ai.models.generateContent(request);
-  } catch (error) {
-    if (error.status !== 429 && error.status !== 503) {
-      throw error;
+  const retryableStatuses = [429, 500, 503, 504];
+  const retryDelays = [1000, 2000, 4000];
+
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      return await ai.models.generateContent(request);
+    } catch (error) {
+      const status = Number(error.status || error.statusCode || error.response?.status);
+      const canRetry = retryableStatuses.includes(status);
+
+      // Client/authentication errors (400, 401, 403) and other errors stop
+      // immediately because retrying will not fix the request.
+      if (!canRetry || attempt === retryDelays.length) {
+        if (canRetry) {
+          error.code = "TEMPORARY_GEMINI_FAILURE";
+        }
+        console.error("Gemini API error:", error);
+        throw error;
+      }
+
+      console.error(`Gemini temporary error (HTTP ${status}); retrying:`, error);
+      await new Promise(function (resolve) {
+        setTimeout(resolve, retryDelays[attempt]);
+      });
     }
-
-    await new Promise(function (resolve) {
-      setTimeout(resolve, 400);
-    });
-
-    return ai.models.generateContent(request);
   }
 }
 
@@ -293,6 +307,13 @@ module.exports = async function handler(request, response) {
   } catch (error) {
     // Keep detailed errors in server logs, not in responses sent to residents.
     console.error("Frisco chat API error:", error);
+    if (error.code === "TEMPORARY_GEMINI_FAILURE") {
+      sendJson(response, 200, {
+        reply: "The AI service is temporarily busy. Please try again in a moment.",
+        results: [],
+      });
+      return;
+    }
     sendJson(response, 502, {
       error: "The assistant could not complete that request. Please try again.",
     });

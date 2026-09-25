@@ -58,6 +58,30 @@ h1 {
   line-height: 1.6;
 }
 
+.demo-controls {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.demo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.demo-toggle input {
+  accent-color: var(--blue);
+}
+
+.demo-status {
+  margin: 6px auto 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .chat-panel {
   overflow: hidden;
   background: var(--white);
@@ -92,11 +116,53 @@ h1 {
   border-bottom-left-radius: 4px;
 }
 
+.message-with-results {
+  width: min(100%, 600px);
+  max-width: 100%;
+}
+
+.loading-message {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .user-message {
   align-self: flex-end;
   background: var(--navy);
   color: var(--white);
   border-bottom-right-radius: 4px;
+}
+
+.result-list {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.result-card {
+  padding: 10px 12px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.result-card h3 {
+  margin: 0 0 5px;
+  color: var(--navy);
+  font-size: 0.95rem;
+}
+
+.result-card p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.result-card a {
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .suggestions {
@@ -174,6 +240,12 @@ button {
 
 .send-button:hover {
   background: var(--navy);
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .disclaimer {
