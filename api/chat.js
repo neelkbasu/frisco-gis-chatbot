@@ -116,14 +116,11 @@ async function understandRequest(message, latitude, longitude) {
   });
 }
 
-// Resolve this project's own MCP endpoint without trusting arbitrary Host values.
+// Resolve the MCP endpoint. Production uses the public URL configured in
+// MCP_SERVER_URL; localhost keeps a convenient local fallback.
 function getMcpUrl(request) {
   if (process.env.MCP_SERVER_URL) {
     return new URL(process.env.MCP_SERVER_URL);
-  }
-
-  if (process.env.VERCEL_URL) {
-    return new URL(`https://${process.env.VERCEL_URL}/api/mcp`);
   }
 
   const host = request.headers.host || "";
