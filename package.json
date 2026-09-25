@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:gis": "node scripts/test-frisco-gis.js",
+    "dev:api": "node --env-file=.env.local scripts/dev-api.js",
     "dev:mcp": "node scripts/dev-mcp.js",
     "test:mcp": "node scripts/test-mcp.js"
   },
@@ -14,6 +15,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google/genai": "^2.24.0",
+    "@modelcontextprotocol/client": "^2.1.0",
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "zod": "^4.6.5"
