@@ -4,7 +4,7 @@ const {
   StreamableHTTPClientTransport,
 } = require("@modelcontextprotocol/client");
 
-const MODEL_NAME = "gemini-3.8-flash";
+const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_RADIUS_MILES = 5;
 const SUPPORTED_FACILITY_TYPES = ["basketball", "playground"];
 const UNSUPPORTED_REPLY =
@@ -107,6 +107,7 @@ async function understandRequest(message, latitude, longitude) {
         },
       },
       temperature: 0,
+      maxOutputTokens: 256,
     },
   });
 
