@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A simple assistant for finding city amenities in Frisco."
+    />
+    <title>Frisco City Assistant</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <!-- Page heading -->
+      <header class="app-header">
+        <p class="eyebrow">City of Frisco</p>
+        <h1>Frisco City Assistant</h1>
+        <p class="description">
+          Ask a question or use a quick button to explore local amenities.
+        </p>
+      </header>
+
+      <!-- Chat messages are shown here. -->
+      <section class="chat-panel" aria-label="Chat with the Frisco City Assistant">
+        <div
+          class="messages"
+          id="messages"
+          aria-live="polite"
+          aria-label="Chat messages"
+        >
+          <div class="message assistant-message">
+            <p>
+              Hi! I’m the Frisco City Assistant. How can I help you today?
+            </p>
+          </div>
+
+          <!-- These are optional examples. The text input remains the main action. -->
+          <div class="suggestions" aria-label="Example prompts">
+            <span class="suggestions-label">Try an example:</span>
+            <div class="suggestion-list">
+              <button
+                class="quick-button"
+                type="button"
+                data-question="Find basketball courts near me"
+              >
+                Find basketball courts near me
+              </button>
+              <button
+                class="quick-button"
+                type="button"
+                data-question="Find playgrounds near me"
+              >
+                Find playgrounds near me
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- The form lets users type and send a message. -->
+        <form class="chat-form" id="chat-form">
+          <label class="sr-only" for="message-input">Type your message</label>
+          <input
+            id="message-input"
+            name="message"
+            type="text"
+            placeholder="Ask about Frisco..."
+            autocomplete="off"
+            required
+          />
+          <button class="send-button" type="submit">Send</button>
+        </form>
+
+        <!-- This notice stays outside the scrolling message area. -->
+        <p class="disclaimer">
+          AI-generated responses may contain mistakes. This assistant is not a
+          City of Frisco employee or a real person. Please verify important
+          information with official City of Frisco sources.
+        </p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
