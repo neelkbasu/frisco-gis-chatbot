@@ -188,10 +188,14 @@ h1 {
 }
 
 .message {
+  /* Long replies and cards must keep their natural height in the flex chat
+     column. Otherwise the bubble shrinks while its contents overflow. */
+  flex-shrink: 0;
   max-width: 80%;
   padding: 12px 16px;
   border-radius: 22px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .message p {
@@ -280,6 +284,7 @@ h1 {
 }
 
 .suggestions {
+  flex-shrink: 0;
   align-self: flex-start;
   max-width: 100%;
 }
