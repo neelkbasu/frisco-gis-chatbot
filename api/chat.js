@@ -6,14 +6,24 @@ const {
 
 const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_RADIUS_MILES = 5;
-const SUPPORTED_FACILITY_TYPES = ["basketball", "playground"];
+const { AMENITY_NAMES } = require("../lib/frisco-gis");
+const SUPPORTED_FACILITY_TYPES = Object.keys(AMENITY_NAMES);
 const UNSUPPORTED_REPLY =
-  "Right now I can help you find basketball courts and playgrounds in Frisco.";
+  "That feature isn't implemented yet—Ask Walnut is a work in progress! For now, I can help you find basketball courts, playgrounds, walking trails, accessible trails, restrooms, and park parking in Frisco.";
+
+// These responses are written here, rather than generated, so unavailable
+// details never become invented GIS facts or promises of future features.
+const UNAVAILABLE_REPLIES = {
+  trail_length: "I can't answer trail lengths yet because this GIS data doesn't include route mileage. Ask Walnut is a work in progress, but I can help you find walking trails or accessible trails.",
+  live_status: "I can't check current opening hours, closures, working facilities, or available parking spaces yet. Ask Walnut is a work in progress. Please check the official City of Frisco website for current information.",
+  directions: "Walking and driving directions aren't implemented yet—Ask Walnut is a work in progress. I can show recorded facility locations and straight-line distances for nearby searches.",
+  other: "I can't answer that detail with the information currently available. Ask Walnut is a work in progress! I can help you find supported park amenities instead.",
+};
 
 const facilityTool = {
   name: "find_nearby_facilities",
   description:
-    "Find nearby basketball courts or playgrounds using official City of Frisco GIS data. Call this only for those two facility types.",
+    "Search official Frisco GIS for supported amenities near the resident, at a named park, or parks with an amenity.",
   parametersJsonSchema: {
     type: "object",
     properties: {
@@ -39,6 +49,11 @@ const facilityTool = {
           "Search radius in miles. Use 5 unless the resident requests another radius.",
         exclusiveMinimum: 0,
       },
+      searchMode: {
+        type: "string", enum: ["nearby", "parks", "at_park"],
+        description: "nearby for closest/near-me searches; parks for which parks have an amenity; at_park for amenities at a named park without a distance request.",
+      },
+      parkName: { type: "string", description: "Park name explicitly supplied by the resident. Omit if none is supplied." },
     },
     required: ["latitude", "longitude", "facilityType", "radiusMiles"],
   },
@@ -96,11 +111,25 @@ async function understandRequest(message, latitude, longitude) {
     config: {
       systemInstruction:
         "You route requests for the Frisco City Assistant. " +
-        "Call find_nearby_facilities when the resident asks for basketball courts or playgrounds, including phrases such as courts nearby or somewhere for kids to play. " +
+        "Call find_nearby_facilities for basketball, playground, trail (walking trails), accessible_trail, restroom, or parking. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. " +
+        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-park amenity questions without nearby wording. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
-        "Do not call the tool for any other topic. Never invent facility information.",
-      tools: [{ functionDeclarations: [facilityTool] }],
+        "Call unavailable_information when the question requires trail length or route mileage, opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
+        "Do not call the tool for any other topic. Never invent facility information or trail lengths.",
+      tools: [{ functionDeclarations: [facilityTool, {
+        name: "clarify_park",
+        description: "Ask for the park name when the resident refers to this park or my park without naming it.",
+        parametersJsonSchema: { type: "object", properties: {} },
+      }, {
+        name: "unavailable_information",
+        description: "Explain that a requested feature or detail is not currently supported. Never invent an answer.",
+        parametersJsonSchema: {
+          type: "object",
+          properties: { reason: { type: "string", enum: ["trail_length", "live_status", "directions", "other", "unsupported"] } },
+          required: ["reason"],
+        },
+      }] }],
       toolConfig: {
         functionCallingConfig: {
           mode: "AUTO",
@@ -112,7 +141,7 @@ async function understandRequest(message, latitude, longitude) {
   });
 
   return response.functionCalls?.find(function (functionCall) {
-    return functionCall.name === "find_nearby_facilities";
+    return ["find_nearby_facilities", "clarify_park", "unavailable_information"].includes(functionCall.name);
   });
 }
 
@@ -166,8 +195,7 @@ async function callFacilityTool(mcpUrl, input) {
 
 // Create a concise reply using only facts already returned by City GIS.
 function buildReply(results, facilityType, radiusMiles) {
-  const pluralFacilityLabel =
-    facilityType === "basketball" ? "basketball courts" : "playgrounds";
+  const pluralFacilityLabel = { basketball: "basketball courts", playground: "playgrounds", trail: "walking trails", accessible_trail: "accessible trails", restroom: "restrooms", parking: "parking locations" }[facilityType];
 
   if (results.length === 0) {
     return `I couldn't find any ${pluralFacilityLabel} within ${radiusMiles} miles. Source: City of Frisco GIS`;
@@ -175,12 +203,7 @@ function buildReply(results, facilityType, radiusMiles) {
 
   const closest = results[0];
   const addressText = closest.address ? ` at ${closest.address}` : "";
-  const facilityLabel =
-    results.length === 1
-      ? facilityType === "basketball"
-        ? "basketball court"
-        : "playground"
-      : pluralFacilityLabel;
+  const facilityLabel = pluralFacilityLabel;
 
   return (
     `I found ${results.length} nearby ${facilityLabel}. ` +
@@ -278,6 +301,24 @@ module.exports = async function handler(request, response) {
       return;
     }
 
+    if (functionCall.name === "unavailable_information") {
+      const reason = functionCall.args?.reason;
+      sendJson(response, 200, {
+        reply: reason === "unsupported" ? UNSUPPORTED_REPLY
+          : UNAVAILABLE_REPLIES[reason] || UNAVAILABLE_REPLIES.other,
+        results: [],
+      });
+      return;
+    }
+
+    if (functionCall.name === "clarify_park") {
+      sendJson(response, 200, {
+        reply: "Which park are you at? Please include its name in your restroom or trail question, or ask for the nearest facility using your location.",
+        results: [],
+      });
+      return;
+    }
+
     const facilityType = functionCall.args?.facilityType;
 
     if (!SUPPORTED_FACILITY_TYPES.includes(facilityType)) {
@@ -297,11 +338,29 @@ module.exports = async function handler(request, response) {
       longitude: input.longitude,
       facilityType,
       radiusMiles,
+      searchMode: ["nearby", "parks", "at_park"].includes(functionCall.args?.searchMode)
+        ? functionCall.args.searchMode : "nearby",
+      ...(typeof functionCall.args?.parkName === "string" && functionCall.args.parkName.trim()
+        ? { parkName: functionCall.args.parkName.trim() } : {}),
     };
     const results = await callFacilityTool(getMcpUrl(request), toolInput);
-    const reply = buildReply(results, facilityType, radiusMiles);
+    const label = AMENITY_NAMES[facilityType].toLowerCase();
+    const reply = toolInput.searchMode === "parks"
+      ? (results.length ? `I found ${results.length} parks with ${label}.` : `No parks with ${label} were found in the GIS records.`) + " Source: City of Frisco GIS"
+      : toolInput.searchMode === "at_park"
+        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`) + " Source: City of Frisco GIS"
+        : buildReply(results, facilityType, radiusMiles);
 
-    sendJson(response, 200, { reply, results });
+    // Distances are straight-line measurements to the amenity point, not
+    // walking directions. The City data does not contain trail route lengths.
+    const notes = [];
+    if (toolInput.searchMode === "nearby" && results.length) {
+      notes.push("Distances are straight-line, not walking distances.");
+    }
+    if (facilityType === "trail" || facilityType === "accessible_trail") {
+      notes.push("Trail lengths are not available in this GIS data.");
+    }
+    sendJson(response, 200, { reply: [reply, ...notes].join(" "), results });
   } catch (error) {
     // Keep detailed errors in server logs, not in responses sent to residents.
     console.error("Frisco chat API error:", error);

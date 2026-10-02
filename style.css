@@ -5,11 +5,14 @@
 
 :root {
   --navy: #17365d;
-  --blue: #246aa5;
+  --blue: #2d69b5;
+  --red: #e51b23;
+  --deep-red: #b71623;
+  --light-red: #fff2f3;
   --light-blue: #eaf4fb;
-  --background: #f3f6f8;
+  --background: #f2f5fa;
   --text: #213547;
-  --muted: #627484;
+  --muted: #526477;
   --white: #ffffff;
   --border: #d9e2e8;
 }
@@ -17,12 +20,18 @@
 body {
   min-height: 100vh;
   margin: 0;
-  padding: 32px 16px;
+  padding: 20px 16px;
   display: grid;
   place-items: center;
-  background: var(--background);
+  /* Color behind the translucent panel gives the glass a soft tint. */
+  background:
+    radial-gradient(ellipse at 12% 15%, rgba(229, 27, 35, 0.14), transparent 48%),
+    radial-gradient(ellipse at 88% 75%, rgba(45, 105, 181, 0.2), transparent 52%),
+    linear-gradient(135deg, #faf7fb, #edf3fc);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
@@ -31,13 +40,41 @@ body {
 }
 
 .app-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   text-align: center;
+}
+
+/* Frame the supplied logo without stretching it. Multiply blends any white
+   background into the page while retaining the original green/teal lettering. */
+.brand-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.brand-logo {
+  position: relative;
+  width: 74px;
+  height: 50px;
+  flex-shrink: 0;
+  margin: 0;
+  overflow: hidden;
+  mix-blend-mode: multiply;
+}
+
+.brand-logo img {
+  position: absolute;
+  width: 128px;
+  height: auto;
+  max-width: none;
+  left: -27px;
+  top: -22px;
 }
 
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--blue);
+  color: var(--deep-red);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -46,20 +83,21 @@ body {
 
 h1 {
   margin: 0;
-  color: var(--navy);
+  color: var(--blue);
   font-size: clamp(2rem, 7vw, 3rem);
   line-height: 1.1;
+  letter-spacing: -0.045em;
 }
 
 .description {
   max-width: 520px;
-  margin: 12px auto 0;
+  margin: 8px auto 0;
   color: var(--muted);
   line-height: 1.6;
 }
 
 .demo-controls {
-  margin-top: 16px;
+  margin-top: 10px;
   text-align: center;
 }
 
@@ -70,10 +108,48 @@ h1 {
   color: var(--muted);
   font-size: 0.82rem;
   cursor: pointer;
+  padding: 9px 14px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.5));
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 3px 12px rgba(23, 54, 93, 0.06);
 }
 
 .demo-toggle input {
-  accent-color: var(--blue);
+  /* A native checkbox remains keyboard accessible underneath this switch. */
+  appearance: none;
+  width: 32px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: #8a97a8;
+  position: relative;
+  cursor: pointer;
+}
+
+.demo-toggle input::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.demo-toggle input:checked {
+  background: var(--deep-red);
+}
+
+.demo-toggle input:checked::before {
+  transform: translateX(12px);
+}
+
+.demo-toggle input:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
 }
 
 .demo-status {
@@ -84,25 +160,37 @@ h1 {
 
 .chat-panel {
   overflow: hidden;
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: 0 16px 40px rgba(23, 54, 93, 0.1);
+  /* Static reflections add depth without animating behind readable text. */
+  background:
+    linear-gradient(125deg, rgba(255, 255, 255, 0.55), transparent 35%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.7), rgba(242, 247, 255, 0.46));
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 30px;
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  backdrop-filter: blur(24px) saturate(145%);
+  box-shadow: 0 28px 70px rgba(34, 57, 98, 0.14),
+    0 8px 24px rgba(34, 57, 98, 0.05),
+    inset 0 2px 1px rgba(255, 255, 255, 1),
+    inset 1px 0 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(117, 147, 187, 0.15);
 }
 
 .messages {
-  height: 360px;
+  /* Reserve room for the heading, composer, and disclaimer on short screens. */
+  height: clamp(220px, calc(100dvh - 340px), 370px);
   padding: 24px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #b9c8dc transparent;
 }
 
 .message {
   max-width: 80%;
   padding: 12px 16px;
-  border-radius: 16px;
+  border-radius: 22px;
   line-height: 1.5;
 }
 
@@ -111,14 +199,38 @@ h1 {
 }
 
 .assistant-message {
+  position: relative;
+  min-height: 116px;
+  margin-left: 120px;
+  max-width: calc(100% - 120px);
   align-self: flex-start;
-  background: var(--light-blue);
-  border-bottom-left-radius: 4px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.93), rgba(231, 241, 255, 0.74));
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 5px 18px rgba(37, 70, 109, 0.06);
+  border-bottom-left-radius: 8px;
+}
+
+.walnut-avatar {
+  position: absolute;
+  left: -130px;
+  top: 0;
+  width: 110px;
+  height: 116px;
+  object-fit: contain;
+}
+
+.assistant-name {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--blue);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-style: normal;
 }
 
 .message-with-results {
-  width: min(100%, 600px);
-  max-width: 100%;
+  width: calc(100% - 120px);
+  max-width: calc(100% - 120px);
 }
 
 .loading-message {
@@ -128,9 +240,11 @@ h1 {
 
 .user-message {
   align-self: flex-end;
-  background: var(--navy);
+  background: linear-gradient(135deg, #397cc8, #245b9e);
   color: var(--white);
-  border-bottom-right-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 5px 14px rgba(45, 105, 181, 0.18);
+  border-bottom-right-radius: 8px;
 }
 
 .result-list {
@@ -141,9 +255,9 @@ h1 {
 
 .result-card {
   padding: 10px 12px;
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(179, 199, 221, 0.45);
+  border-radius: 16px;
 }
 
 .result-card h3 {
@@ -194,24 +308,32 @@ button {
 
 .quick-button {
   padding: 7px 11px;
-  background: #f8fafb;
-  color: var(--muted);
-  border: 1px solid var(--border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.55));
+  color: var(--navy);
+  border: 1px solid rgba(255, 255, 255, 0.95);
   border-radius: 999px;
   font-size: 0.82rem;
+  box-shadow: 0 3px 9px rgba(23, 54, 93, 0.05), inset 0 1px 0 white;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .quick-button:hover {
-  background: var(--light-blue);
-  color: var(--blue);
-  border-color: #aac7dc;
+  background: var(--light-red);
+  color: var(--deep-red);
+  border-color: #e4b5ba;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
 }
 
 .chat-form {
   padding: 16px 24px 24px;
   display: flex;
   gap: 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.8);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.5));
 }
 
 .chat-form input {
@@ -219,8 +341,10 @@ button {
   flex: 1;
   padding: 12px 14px;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(174, 190, 209, 0.55);
+  border-radius: 999px;
+  box-shadow: inset 0 2px 5px rgba(23, 54, 93, 0.04), 0 2px 8px rgba(23, 54, 93, 0.04);
   outline: none;
 }
 
@@ -231,15 +355,44 @@ button {
 
 .send-button {
   padding: 12px 22px;
-  background: var(--blue);
+  background: linear-gradient(160deg, #e84d59 0%, #c61e30 42%, #a61222 100%);
   color: var(--white);
-  border: 0;
-  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 5px 14px rgba(183, 22, 35, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   font-weight: 700;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+/* Hover lift is limited to devices with a pointer; taps get a gentle press. */
+@media (hover: hover) {
+  .quick-button:not(:disabled):hover,
+  .send-button:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 7px 18px rgba(23, 54, 93, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+}
+
+.quick-button:not(:disabled):active,
+.send-button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-button, .send-button { transition: none; transform: none !important; }
+}
+
+/* Keep the panel legible when glass effects are unavailable or unwanted. */
+@supports not (backdrop-filter: blur(1px)) {
+  .chat-panel { background: #f8faff; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .chat-panel { background: #f8faff; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
 .send-button:hover {
-  background: var(--navy);
+  background: linear-gradient(160deg, #d63b49, #a61222);
 }
 
 button:disabled,
@@ -271,11 +424,11 @@ input:disabled {
 /* Stack the input and button on smaller phones. */
 @media (max-width: 520px) {
   body {
-    padding: 20px 12px;
+    padding: 16px 12px;
   }
 
   .messages {
-    height: 330px;
+    height: clamp(180px, calc(100dvh - 390px), 300px);
     padding: 18px;
   }
 
@@ -288,8 +441,28 @@ input:disabled {
     width: 100%;
   }
 
+  .brand-heading {
+    gap: 10px;
+  }
+
   .message {
     max-width: 90%;
+  }
+
+  .assistant-message {
+    min-height: 88px;
+    margin-left: 80px;
+    max-width: calc(100% - 80px);
+  }
+
+  .message-with-results {
+    width: calc(100% - 80px);
+  }
+
+  .walnut-avatar {
+    left: -86px;
+    width: 72px;
+    height: 88px;
   }
 
   .disclaimer {

@@ -17,12 +17,28 @@ const DEMO_LOCATION = {
 // This flag prevents a second request while the first one is running.
 let isLoading = false;
 
+// Give Walnut's replies a mascot and name. The image is decorative because
+// the visible name already identifies who is speaking.
+function addWalnutAvatar(message) {
+  const avatar = document.createElement("img");
+  avatar.className = "walnut-avatar";
+  avatar.src = "assets/walnut.png";
+  avatar.alt = "";
+  const name = document.createElement("span");
+  name.className = "assistant-name";
+  name.textContent = "Walnut";
+  message.append(avatar, name);
+}
+
 // Add a message bubble to the chat area.
 function addMessage(text, sender, results) {
   const message = document.createElement("div");
   const paragraph = document.createElement("p");
 
   message.classList.add("message", `${sender}-message`);
+  if (sender === "assistant") {
+    addWalnutAvatar(message);
+  }
   paragraph.textContent = text;
   message.appendChild(paragraph);
 
@@ -48,7 +64,7 @@ function addResultCards(message, results) {
     card.className = "result-card";
     title.textContent = result.park || result.name || "Frisco facility";
     details.textContent = [
-      result.facilityType ? `Type: ${result.facilityType}` : "",
+      result.facilityType ? `Type: ${{ trail: "Walking trail", accessible_trail: "Accessible trail", restroom: "Restroom", parking: "Parking" }[result.facilityType] || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
       Number.isFinite(result.distanceMiles)
         ? `Distance: ${result.distanceMiles} miles`
@@ -79,7 +95,10 @@ function addLoadingMessage() {
   const loadingMessage = document.createElement("div");
   loadingMessage.className = "message assistant-message loading-message";
   loadingMessage.setAttribute("aria-live", "polite");
-  loadingMessage.textContent = "Searching for Frisco facilities…";
+  addWalnutAvatar(loadingMessage);
+  const status = document.createElement("p");
+  status.textContent = "Searching for Frisco facilities…";
+  loadingMessage.appendChild(status);
   messages.appendChild(loadingMessage);
   messages.scrollTop = messages.scrollHeight;
   return loadingMessage;
@@ -102,6 +121,7 @@ function questionNeedsLocation(text) {
     question.includes("basketball") ||
     question.includes("basketball court") ||
     question.includes("playground") ||
+    /trail|restroom|bathroom|toilet|parking/.test(question) ||
     question.includes("kids to play");
 
   // The broader facility check supports requests such as “Where can I play
@@ -112,6 +132,7 @@ function questionNeedsLocation(text) {
     question.includes("where can i play basketball") ||
     question.includes("find basketball") ||
     question.includes("find playground") ||
+    /find.*(trail|restroom|bathroom|toilet|parking)/.test(question) ||
     question.includes("where is the closest playground") ||
     question.includes("somewhere for kids to play")
   );

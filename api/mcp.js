@@ -1,4 +1,4 @@
-const { findNearbyFacilities } = require("../lib/frisco-gis");
+const { findNearbyFacilities, AMENITY_NAMES } = require("../lib/frisco-gis");
 
 let nodeHandlerPromise;
 
@@ -16,11 +16,12 @@ async function getNodeHandler() {
       const facilityResultSchema = z.object({
         name: z.string().nullable(),
         park: z.string().nullable(),
-        facilityType: z.enum(["basketball", "playground"]),
+        facilityType: z.enum(Object.keys(AMENITY_NAMES)),
         address: z.string().nullable(),
-        latitude: z.number(),
-        longitude: z.number(),
-        distanceMiles: z.number(),
+        latitude: z.number().nullable(),
+        longitude: z.number().nullable(),
+        distanceMiles: z.number().nullable(),
+        amenities: z.string().nullable().optional(),
         website: z.string().nullable(),
         description: z.string().nullable(),
         imageUrl: z.string().nullable(),
@@ -41,12 +42,14 @@ async function getNodeHandler() {
             {
               title: "Find nearby Frisco facilities",
               description:
-                "Find up to five nearby City of Frisco basketball courts or playgrounds.",
+                "Find nearby amenities, amenities at a named park, or parks with a recorded amenity in City of Frisco GIS.",
               inputSchema: z.object({
                 latitude: z.number().min(-90).max(90),
                 longitude: z.number().min(-180).max(180),
-                facilityType: z.enum(["basketball", "playground"]),
+                facilityType: z.enum(Object.keys(AMENITY_NAMES)),
                 radiusMiles: z.number().positive(),
+                searchMode: z.enum(["nearby", "parks", "at_park"]).optional(),
+                parkName: z.string().trim().min(1).optional(),
               }),
               outputSchema: z.object({
                 results: z.array(facilityResultSchema),

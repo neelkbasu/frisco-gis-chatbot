@@ -7,6 +7,8 @@ const mcpHandler = require("../api/mcp");
 const port = Number(process.env.PORT || 3000);
 const projectRoot = path.resolve(__dirname, "..");
 const staticFiles = {
+  "/assets/play-frisco.png": { file: "assets/play-frisco.png", type: "image/png" },
+  "/assets/walnut.png": { file: "assets/walnut.png", type: "image/png" },
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
   "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
   "/style.css": { file: "style.css", type: "text/css; charset=utf-8" },
