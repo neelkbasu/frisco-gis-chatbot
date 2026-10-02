@@ -332,13 +332,18 @@ module.exports = async function handler(request, response) {
         ? requestedRadius
         : DEFAULT_RADIUS_MILES;
 
+    // Explicit nearby wording takes precedence over Gemini's chosen mode.
+    // Otherwise a "near me" request could accidentally list citywide parks.
+    const asksForNearby = /\b(near me|nearby|nearest|closest|around me|close to me|near us|near you)\b/i.test(input.message);
+
     // Always use the validated request coordinates, never model-generated ones.
     const toolInput = {
       latitude: input.latitude,
       longitude: input.longitude,
       facilityType,
       radiusMiles,
-      searchMode: ["nearby", "parks", "at_park"].includes(functionCall.args?.searchMode)
+      searchMode: asksForNearby ? "nearby"
+        : ["nearby", "parks", "at_park"].includes(functionCall.args?.searchMode)
         ? functionCall.args.searchMode : "nearby",
       ...(typeof functionCall.args?.parkName === "string" && functionCall.args.parkName.trim()
         ? { parkName: functionCall.args.parkName.trim() } : {}),
