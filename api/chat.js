@@ -346,7 +346,7 @@ module.exports = async function handler(request, response) {
     const results = await callFacilityTool(getMcpUrl(request), toolInput);
     const label = AMENITY_NAMES[facilityType].toLowerCase();
     const reply = toolInput.searchMode === "parks"
-      ? (results.length ? `I found ${results.length} parks with ${label}.` : `No parks with ${label} were found in the GIS records.`)
+      ? (results.length ? `Here ${results.length === 1 ? "is 1 park" : `are ${results.length} parks`} with ${label}. Ask for parks near you to see the closest options.` : `No parks with ${label} were found in the GIS records.`)
       : toolInput.searchMode === "at_park"
         ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`)
         : buildReply(results, facilityType, radiusMiles);
