@@ -198,17 +198,17 @@ function buildReply(results, facilityType, radiusMiles) {
   const pluralFacilityLabel = { basketball: "basketball courts", playground: "playgrounds", trail: "walking trails", accessible_trail: "accessible trails", restroom: "restrooms", parking: "parking locations" }[facilityType];
 
   if (results.length === 0) {
-    return `I couldn't find any ${pluralFacilityLabel} within ${radiusMiles} miles. Source: City of Frisco GIS`;
+    return `I couldn't find any ${pluralFacilityLabel} within ${radiusMiles} miles.`;
   }
 
   const closest = results[0];
-  const addressText = closest.address ? ` at ${closest.address}` : "";
-  const facilityLabel = pluralFacilityLabel;
+  const facilityLabel = results.length === 1
+    ? { basketball: "basketball court", playground: "playground", trail: "walking trail", accessible_trail: "accessible trail", restroom: "restroom", parking: "parking location" }[facilityType]
+    : pluralFacilityLabel;
 
   return (
     `I found ${results.length} nearby ${facilityLabel}. ` +
-    `The closest is ${closest.name}, ${closest.distanceMiles} miles away${addressText}. ` +
-    "Source: City of Frisco GIS"
+    `${closest.name || closest.park || "The first result"} is the closest, about ${closest.distanceMiles} miles away.`
   );
 }
 
@@ -346,21 +346,18 @@ module.exports = async function handler(request, response) {
     const results = await callFacilityTool(getMcpUrl(request), toolInput);
     const label = AMENITY_NAMES[facilityType].toLowerCase();
     const reply = toolInput.searchMode === "parks"
-      ? (results.length ? `I found ${results.length} parks with ${label}.` : `No parks with ${label} were found in the GIS records.`) + " Source: City of Frisco GIS"
+      ? (results.length ? `I found ${results.length} parks with ${label}.` : `No parks with ${label} were found in the GIS records.`)
       : toolInput.searchMode === "at_park"
-        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`) + " Source: City of Frisco GIS"
+        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`)
         : buildReply(results, facilityType, radiusMiles);
 
-    // Distances are straight-line measurements to the amenity point, not
-    // walking directions. The City data does not contain trail route lengths.
-    const notes = [];
-    if (toolInput.searchMode === "nearby" && results.length) {
-      notes.push("Distances are straight-line, not walking distances.");
-    }
-    if (facilityType === "trail" || facilityType === "accessible_trail") {
-      notes.push("Trail lengths are not available in this GIS data.");
-    }
-    sendJson(response, 200, { reply: [reply, ...notes].join(" "), results });
+    // Keep attribution separate from the conversational reply. Unavailable
+    // trail mileage is explained only when asked, through the existing tool.
+    sendJson(response, 200, {
+      reply, results, source: "City of Frisco GIS",
+      distanceNote: toolInput.searchMode === "nearby" && results.length
+        ? "Straight-line distances" : null,
+    });
   } catch (error) {
     // Keep detailed errors in server logs, not in responses sent to residents.
     console.error("Frisco chat API error:", error);

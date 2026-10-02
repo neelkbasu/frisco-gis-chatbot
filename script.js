@@ -31,7 +31,7 @@ function addWalnutAvatar(message) {
 }
 
 // Add a message bubble to the chat area.
-function addMessage(text, sender, results) {
+function addMessage(text, sender, results, source, distanceNote) {
   const message = document.createElement("div");
   const paragraph = document.createElement("p");
 
@@ -45,6 +45,14 @@ function addMessage(text, sender, results) {
   if (sender === "assistant" && Array.isArray(results) && results.length > 0) {
     message.classList.add("message-with-results");
     addResultCards(message, results);
+  }
+
+  // Show attribution quietly below the cards, including for empty GIS results.
+  if (sender === "assistant" && source) {
+    const footer = document.createElement("p");
+    footer.className = "response-footer";
+    footer.textContent = [`Source: ${source}`, distanceNote].filter(Boolean).join(" · ");
+    message.appendChild(footer);
   }
 
   messages.appendChild(message);
@@ -243,7 +251,9 @@ async function sendMessage(text) {
     addMessage(
       data.reply || "I could not find a response for that request.",
       "assistant",
-      data.results
+      data.results,
+      data.source,
+      data.distanceNote
     );
   } catch (error) {
     loadingMessage.remove();

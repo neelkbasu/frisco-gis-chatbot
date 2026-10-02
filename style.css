@@ -202,6 +202,13 @@ h1 {
   margin: 0;
 }
 
+.message .response-footer {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
 .assistant-message {
   position: relative;
   min-height: 116px;
