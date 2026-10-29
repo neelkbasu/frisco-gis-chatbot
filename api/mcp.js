@@ -1,4 +1,5 @@
-const { findNearbyFacilities, AMENITY_NAMES } = require("../lib/frisco-gis");
+const { findNearbyFacilities } = require("../lib/frisco-gis");
+const { AMENITY_NAMES } = require("../lib/amenities");
 
 let nodeHandlerPromise;
 

@@ -6,10 +6,15 @@ const {
 
 const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_RADIUS_MILES = 5;
-const { AMENITY_NAMES } = require("../lib/frisco-gis");
+const { asksForNearby } = require("../lib/search-language");
+const { AMENITIES, AMENITY_NAMES } = require("../lib/amenities");
+const supportedLabels = Object.values(AMENITIES).map((amenity) => amenity.plural).join(", ");
+const routingDescriptions = Object.entries(AMENITIES).map(([type, amenity]) =>
+  `${type}: ${amenity.plural} (keywords: ${amenity.keywords.join(", ")})`
+).join("; ");
 const SUPPORTED_FACILITY_TYPES = Object.keys(AMENITY_NAMES);
 const UNSUPPORTED_REPLY =
-  "That feature isn't implemented yet—Ask Walnut is a work in progress! For now, I can help you find basketball courts, playgrounds, walking trails, accessible trails, restrooms, and park parking in Frisco.";
+  `That feature isn't implemented yet—Ask Walnut is a work in progress! For now, I can help you find ${supportedLabels} in Frisco.`;
 
 // These responses are written here, rather than generated, so unavailable
 // details never become invented GIS facts or promises of future features.
@@ -111,7 +116,7 @@ async function understandRequest(message, latitude, longitude) {
     config: {
       systemInstruction:
         "You route requests for the Frisco City Assistant. " +
-        "Call find_nearby_facilities for basketball, playground, trail (walking trails), accessible_trail, restroom, or parking. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. " +
+        `Call find_nearby_facilities for these supported types: ${routingDescriptions}. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. ` +
         "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-park amenity questions without nearby wording. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
@@ -195,7 +200,7 @@ async function callFacilityTool(mcpUrl, input) {
 
 // Create a concise reply using only facts already returned by City GIS.
 function buildReply(results, facilityType, radiusMiles) {
-  const pluralFacilityLabel = { basketball: "basketball courts", playground: "playgrounds", trail: "walking trails", accessible_trail: "accessible trails", restroom: "restrooms", parking: "parking locations" }[facilityType];
+  const pluralFacilityLabel = AMENITIES[facilityType].plural;
 
   if (results.length === 0) {
     return `I couldn't find any ${pluralFacilityLabel} within ${radiusMiles} miles.`;
@@ -203,7 +208,7 @@ function buildReply(results, facilityType, radiusMiles) {
 
   const closest = results[0];
   const facilityLabel = results.length === 1
-    ? { basketball: "basketball court", playground: "playground", trail: "walking trail", accessible_trail: "accessible trail", restroom: "restroom", parking: "parking location" }[facilityType]
+    ? AMENITIES[facilityType].singular
     : pluralFacilityLabel;
 
   return (
@@ -313,7 +318,7 @@ module.exports = async function handler(request, response) {
 
     if (functionCall.name === "clarify_park") {
       sendJson(response, 200, {
-        reply: "Which park are you at? Please include its name in your restroom or trail question, or ask for the nearest facility using your location.",
+        reply: "Which park are you at? Please include its name in your amenity question, or ask for the nearest facility using your location.",
         results: [],
       });
       return;
@@ -334,7 +339,7 @@ module.exports = async function handler(request, response) {
 
     // Explicit nearby wording takes precedence over Gemini's chosen mode.
     // Otherwise a "near me" request could accidentally list citywide parks.
-    const asksForNearby = /\b(near me|nearby|nearest|closest|around me|close to me|near us|near you)\b/i.test(input.message);
+    const nearbyRequested = asksForNearby(input.message);
 
     // Always use the validated request coordinates, never model-generated ones.
     const toolInput = {
@@ -342,7 +347,7 @@ module.exports = async function handler(request, response) {
       longitude: input.longitude,
       facilityType,
       radiusMiles,
-      searchMode: asksForNearby ? "nearby"
+      searchMode: nearbyRequested ? "nearby"
         : ["nearby", "parks", "at_park"].includes(functionCall.args?.searchMode)
         ? functionCall.args.searchMode : "nearby",
       ...(typeof functionCall.args?.parkName === "string" && functionCall.args.parkName.trim()

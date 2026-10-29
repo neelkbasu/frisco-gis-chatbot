@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const chatHandler = require("../api/chat");
 const mcpHandler = require("../api/mcp");
+const amenitiesHandler = require("../api/amenities");
 
 const port = Number(process.env.PORT || 3000);
 const projectRoot = path.resolve(__dirname, "..");
@@ -28,6 +29,11 @@ const server = http.createServer(function (request, response) {
 
   if (requestUrl.pathname === "/api/mcp") {
     mcpHandler(request, response);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/amenities") {
+    amenitiesHandler(request, response);
     return;
   }
 

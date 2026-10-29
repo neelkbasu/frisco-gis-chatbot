@@ -14,6 +14,22 @@ const DEMO_LOCATION = {
   longitude: -96.8236,
 };
 
+// Load the same labels and keywords used by the server. Retry on the next
+// message if the endpoint is temporarily unavailable.
+let amenityDefinitions;
+let nearbyPattern;
+async function loadAmenities() {
+  if (amenityDefinitions) return;
+  const response = await fetch("/api/amenities");
+  if (!response.ok) throw new Error("Could not load supported amenities. Please try again.");
+  const data = await response.json();
+  if (!data.amenities || typeof data.amenities !== "object" || typeof data.nearbyPattern !== "string") {
+    throw new Error("The amenity list was unreadable. Please try again.");
+  }
+  nearbyPattern = new RegExp(data.nearbyPattern, "i");
+  amenityDefinitions = data.amenities;
+}
+
 // This flag prevents a second request while the first one is running.
 let isLoading = false;
 
@@ -72,7 +88,7 @@ function addResultCards(message, results) {
     card.className = "result-card";
     title.textContent = result.park || result.name || "Frisco facility";
     details.textContent = [
-      result.facilityType ? `Type: ${{ trail: "Walking trail", accessible_trail: "Accessible trail", restroom: "Restroom", parking: "Parking" }[result.facilityType] || result.facilityType}` : "",
+      result.facilityType ? `Type: ${amenityDefinitions?.[result.facilityType]?.singular || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
       Number.isFinite(result.distanceMiles)
         ? `Distance: ${result.distanceMiles} miles`
@@ -115,35 +131,13 @@ function addLoadingMessage() {
 // Nearby facility questions need the browser's current position.
 function questionNeedsLocation(text) {
   const question = text.toLowerCase();
-  const mentionsNearMe = question.includes("near me");
-  const mentionsNearby = [
-    "nearby",
-    "nearest",
-    "closest",
-    "around me",
-    "close to me",
-  ].some(function (phrase) {
-    return question.includes(phrase);
-  });
-  const asksAboutSupportedFacility =
-    question.includes("basketball") ||
-    question.includes("basketball court") ||
-    question.includes("playground") ||
-    /trail|restroom|bathroom|toilet|parking/.test(question) ||
-    question.includes("kids to play");
-
-  // The broader facility check supports requests such as “Where can I play
-  // basketball?” because /api/chat needs coordinates to search City GIS.
-  return (
-    mentionsNearMe ||
-    (asksAboutSupportedFacility && mentionsNearby) ||
-    question.includes("where can i play basketball") ||
-    question.includes("find basketball") ||
-    question.includes("find playground") ||
-    /find.*(trail|restroom|bathroom|toilet|parking)/.test(question) ||
-    question.includes("where is the closest playground") ||
-    question.includes("somewhere for kids to play")
+  const mentionsNearby = nearbyPattern.test(question);
+  const asksAboutSupportedFacility = Object.values(amenityDefinitions || {}).some(
+    (amenity) => amenity.keywords.some((keyword) => question.includes(keyword.toLowerCase()))
   );
+
+  return mentionsNearby ||
+    (asksAboutSupportedFacility && /\b(find|where|somewhere)\b/.test(question));
 }
 
 function getBrowserLocation() {
@@ -242,6 +236,7 @@ async function sendMessage(text) {
   const loadingMessage = addLoadingMessage();
 
   try {
+    await loadAmenities();
     const location = questionNeedsLocation(cleanText)
       ? await getBrowserLocation()
       : null;
