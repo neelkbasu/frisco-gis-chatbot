@@ -1,4 +1,4 @@
-const { findNearbyFacilities, AMENITY_NAMES } = require("../lib/frisco-gis");
+const { findNearbyFacilities, AMENITY_NAMES, AMENITY_LOCATION_NOTES } = require("../lib/frisco-gis");
 
 let nodeHandlerPromise;
 
@@ -42,7 +42,8 @@ async function getNodeHandler() {
             {
               title: "Find nearby Frisco facilities",
               description:
-                "Find nearby amenities, amenities at a named park, or parks with a recorded amenity in City of Frisco GIS.",
+                `Find nearby amenities, amenities at a named park, or parks with a recorded amenity in City of Frisco GIS. Supported amenities: ${Object.values(AMENITY_NAMES).join(", ")}. ` +
+                "Horseshoe pit searches use park records only; nearby searches return citywide park matches without a radius filter or distances. See the returned note.",
               inputSchema: z.object({
                 latitude: z.number().min(-90).max(90),
                 longitude: z.number().min(-180).max(180),
@@ -53,6 +54,7 @@ async function getNodeHandler() {
               }),
               outputSchema: z.object({
                 results: z.array(facilityResultSchema),
+                note: z.string().optional(),
               }),
               annotations: {
                 readOnlyHint: true,
@@ -65,7 +67,8 @@ async function getNodeHandler() {
                 // Reusing this function keeps all ArcGIS logic in one place.
                 // Data flows: AI client -> MCP tool -> Frisco GIS -> MCP result.
                 const results = await findNearbyFacilities(input);
-                const response = { results };
+                const note = AMENITY_LOCATION_NOTES[input.facilityType];
+                const response = { results, ...(note ? { note } : {}) };
 
                 return {
                   content: [

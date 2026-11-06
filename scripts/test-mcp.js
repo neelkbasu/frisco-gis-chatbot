@@ -1,14 +1,17 @@
 const http = require("node:http");
 const mcpHandler = require("../api/mcp");
+const { AMENITY_NAMES } = require("../lib/frisco-gis");
 
 const latitude = Number(process.argv[2]);
 const longitude = Number(process.argv[3]);
 const radiusMiles = Number(process.argv[4] || 5);
 const facilityType = process.argv[5] || "basketball";
+const searchMode = process.argv[6] || "nearby";
+const parkName = process.argv[7];
 
 if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
   console.error(
-    "Usage: npm run test:mcp -- <latitude> <longitude> [radiusMiles] [basketball|playground]"
+    `Usage: npm run test:mcp -- <latitude> <longitude> [radiusMiles] [${Object.keys(AMENITY_NAMES).join("|")}] [nearby|parks|at_park] ["park name"]`
   );
   process.exitCode = 1;
 } else {
@@ -53,7 +56,7 @@ async function runTest() {
       method: "tools/call",
       params: {
         name: "find_nearby_facilities",
-        arguments: { latitude, longitude, facilityType, radiusMiles },
+        arguments: { latitude, longitude, facilityType, radiusMiles, searchMode, ...(parkName ? { parkName } : {}) },
       },
     });
 

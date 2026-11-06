@@ -1,4 +1,4 @@
-const { findNearbyFacilities } = require("../lib/frisco-gis");
+const { findNearbyFacilities, AMENITY_NAMES } = require("../lib/frisco-gis");
 
 const latitude = Number(process.argv[2]);
 const longitude = Number(process.argv[3]);
@@ -15,7 +15,7 @@ if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
 
 async function runTests() {
   try {
-    for (const facilityType of ["basketball", "playground"]) {
+    for (const facilityType of Object.keys(AMENITY_NAMES)) {
       const results = await findNearbyFacilities({
         latitude,
         longitude,

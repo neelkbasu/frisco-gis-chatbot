@@ -9,7 +9,7 @@ const DEFAULT_RADIUS_MILES = 5;
 const { AMENITY_NAMES } = require("../lib/frisco-gis");
 const SUPPORTED_FACILITY_TYPES = Object.keys(AMENITY_NAMES);
 const UNSUPPORTED_REPLY =
-  "That feature isn't implemented yet—Ask Walnut is a work in progress! For now, I can help you find basketball courts, playgrounds, walking trails, accessible trails, restrooms, and park parking in Frisco.";
+  "That feature isn't implemented yet—Ask Walnut is a work in progress! For now, I can help you find basketball courts, playgrounds, walking trails, accessible trails, restrooms, park parking, disc golf, dog parks, fishing, fitness equipment, football, and horseshoe pits in Frisco.";
 
 // These responses are written here, rather than generated, so unavailable
 // details never become invented GIS facts or promises of future features.
@@ -111,8 +111,9 @@ async function understandRequest(message, latitude, longitude) {
     config: {
       systemInstruction:
         "You route requests for the Frisco City Assistant. " +
-        "Call find_nearby_facilities for basketball, playground, trail (walking trails), accessible_trail, restroom, or parking. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. " +
-        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-park amenity questions without nearby wording. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
+        `Call find_nearby_facilities for these facilityType values: ${SUPPORTED_FACILITY_TYPES.join(", ")}. ` +
+        "Map disc golf or frisbee golf to disc_golf; dog parks or off-leash dog areas to dog_park; fishing or places to fish to fishing; outdoor exercise equipment or fitness equipment to fitness_equipment; football fields to football; and horseshoes or horseshoe pits to horseshoe_pit. Map walking trails to trail. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. " +
+        "Use searchMode parks for 'which parks have' an amenity without nearby wording. Use nearby for nearest, closest, nearby, or unqualified requests to find places to play or exercise. Horseshoe pits have park records only; do not promise exact pit locations or distances. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-park amenity questions without nearby wording. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
         "Call unavailable_information when the question requires trail length or route mileage, opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
@@ -187,7 +188,7 @@ async function callFacilityTool(mcpUrl, input) {
       throw new Error("The Frisco GIS tool returned an unexpected response.");
     }
 
-    return results;
+    return { results, note: toolResult.structuredContent.note };
   } finally {
     await client.close();
   }
@@ -195,7 +196,12 @@ async function callFacilityTool(mcpUrl, input) {
 
 // Create a concise reply using only facts already returned by City GIS.
 function buildReply(results, facilityType, radiusMiles) {
-  const pluralFacilityLabel = { basketball: "basketball courts", playground: "playgrounds", trail: "walking trails", accessible_trail: "accessible trails", restroom: "restrooms", parking: "parking locations" }[facilityType];
+  const pluralFacilityLabel = {
+    basketball: "basketball courts", playground: "playgrounds", trail: "walking trails",
+    accessible_trail: "accessible trails", restroom: "restrooms", parking: "parking locations",
+    disc_golf: "disc golf locations", dog_park: "dog parks", fishing: "fishing locations",
+    fitness_equipment: "fitness equipment locations", football: "football fields", horseshoe_pit: "horseshoe pits",
+  }[facilityType];
 
   if (results.length === 0) {
     return `I couldn't find any ${pluralFacilityLabel} within ${radiusMiles} miles.`;
@@ -203,7 +209,12 @@ function buildReply(results, facilityType, radiusMiles) {
 
   const closest = results[0];
   const facilityLabel = results.length === 1
-    ? { basketball: "basketball court", playground: "playground", trail: "walking trail", accessible_trail: "accessible trail", restroom: "restroom", parking: "parking location" }[facilityType]
+    ? {
+      basketball: "basketball court", playground: "playground", trail: "walking trail",
+      accessible_trail: "accessible trail", restroom: "restroom", parking: "parking location",
+      disc_golf: "disc golf location", dog_park: "dog park", fishing: "fishing location",
+      fitness_equipment: "fitness equipment location", football: "football field", horseshoe_pit: "horseshoe pit",
+    }[facilityType]
     : pluralFacilityLabel;
 
   return (
@@ -313,7 +324,7 @@ module.exports = async function handler(request, response) {
 
     if (functionCall.name === "clarify_park") {
       sendJson(response, 200, {
-        reply: "Which park are you at? Please include its name in your restroom or trail question, or ask for the nearest facility using your location.",
+        reply: "Which park are you at? Please include its name in your amenity question, or ask for the nearest facility using your location.",
         results: [],
       });
       return;
@@ -348,19 +359,22 @@ module.exports = async function handler(request, response) {
       ...(typeof functionCall.args?.parkName === "string" && functionCall.args.parkName.trim()
         ? { parkName: functionCall.args.parkName.trim() } : {}),
     };
-    const results = await callFacilityTool(getMcpUrl(request), toolInput);
+    const { results, note } = await callFacilityTool(getMcpUrl(request), toolInput);
     const label = AMENITY_NAMES[facilityType].toLowerCase();
-    const reply = toolInput.searchMode === "parks"
-      ? (results.length ? `Here ${results.length === 1 ? "is 1 park" : `are ${results.length} parks`} with ${label}. Ask for parks near you to see the closest options.` : `No parks with ${label} were found in the GIS records.`)
+    let reply = toolInput.searchMode === "parks"
+      ? (results.length ? `Here ${results.length === 1 ? "is 1 park" : `are ${results.length} parks`} with ${label}.` + (note ? "" : " Ask for parks near you to see the closest options.") : `No parks with ${label} were found in the GIS records.`)
       : toolInput.searchMode === "at_park"
-        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`)
-        : buildReply(results, facilityType, radiusMiles);
+        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} records were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`)
+        : note
+          ? (results.length ? `The GIS records list ${results.length === 1 ? "1 park" : `${results.length} parks`} with ${label}. These park matches are not filtered by distance.` : `No parks with ${label} were found in the GIS records.`)
+          : buildReply(results, facilityType, radiusMiles);
+    if (note) reply += ` ${note}`;
 
     // Keep attribution separate from the conversational reply. Unavailable
     // trail mileage is explained only when asked, through the existing tool.
     sendJson(response, 200, {
       reply, results, source: "City of Frisco GIS",
-      distanceNote: toolInput.searchMode === "nearby" && results.length
+      distanceNote: toolInput.searchMode === "nearby" && results.some(result => Number.isFinite(result.distanceMiles))
         ? "Straight-line distances" : null,
     });
   } catch (error) {

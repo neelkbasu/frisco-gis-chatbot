@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:gis": "node scripts/test-frisco-gis.js",
+    "test:amenities": "node --test scripts/test-amenities.js",
     "dev:api": "node --env-file=.env.local scripts/dev-api.js",
     "dev:mcp": "node scripts/dev-mcp.js",
     "test:mcp": "node scripts/test-mcp.js"
