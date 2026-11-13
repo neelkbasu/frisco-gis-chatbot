@@ -480,10 +480,30 @@ input:disabled {
   cursor: pointer;
 }
 
-.result-card[data-on-map]:hover,
-.result-card[data-on-map]:focus-visible {
+.result-card[data-on-map]:hover {
   border-color: var(--blue);
-  outline: none;
+}
+
+.map-button {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Without a map, the numbers and map buttons would match nothing. */
+.map-unavailable .result-number,
+.map-unavailable .map-button {
+  display: none;
+}
+
+.map-unavailable .result-card[data-on-map] {
+  cursor: auto;
 }
 
 .result-number {
