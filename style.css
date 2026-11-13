@@ -420,6 +420,125 @@ input:disabled {
   line-height: 1.45;
 }
 
+/* Chat and map sit side by side on wide screens and stack on narrower ones. */
+.workspace {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 1000px) {
+  .app {
+    max-width: 1360px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(520px, 1fr) minmax(0, 1.15fr);
+    align-items: stretch;
+  }
+}
+
+.map-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.7), rgba(242, 247, 255, 0.46));
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 30px;
+  box-shadow: 0 28px 70px rgba(34, 57, 98, 0.14), 0 8px 24px rgba(34, 57, 98, 0.05);
+}
+
+.map-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 16px 22px 10px;
+}
+
+.map-header h2 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1rem;
+}
+
+.map-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.map {
+  position: relative;
+  flex: 1;
+  min-height: 340px;
+  margin: 0 12px 12px;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* Hover label for amenity icons and numbered results on the map. */
+.map-tooltip {
+  position: absolute;
+  z-index: 2;
+  max-width: 260px;
+  padding: 5px 9px;
+  background: var(--navy);
+  color: var(--white);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(23, 54, 93, 0.25);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.map-tooltip[hidden] {
+  display: none;
+}
+
+/* Cards match the numbered pins on the map and zoom to them when clicked. */
+.result-card[data-on-map] {
+  cursor: pointer;
+}
+
+.result-card[data-on-map]:hover {
+  border-color: var(--blue);
+}
+
+.map-button {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Without a map, the numbers and map buttons would match nothing. */
+.map-unavailable .result-number,
+.map-unavailable .map-button {
+  display: none;
+}
+
+.map-unavailable .result-card[data-on-map] {
+  cursor: auto;
+}
+
+.result-number {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #c61e30;
+  color: var(--white);
+  font-size: 0.7rem;
+  vertical-align: 1px;
+}
+
 /* Keep labels available to screen readers without showing them visually. */
 .sr-only {
   position: absolute;
@@ -479,5 +598,9 @@ input:disabled {
 
   .disclaimer {
     margin: -6px 18px 18px;
+  }
+
+  .map {
+    min-height: 300px;
   }
 }

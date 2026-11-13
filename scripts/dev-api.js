@@ -17,6 +17,10 @@ const staticFiles = {
     file: "script.js",
     type: "application/javascript; charset=utf-8",
   },
+  "/map.js": {
+    file: "map.js",
+    type: "application/javascript; charset=utf-8",
+  },
 };
 
 const server = http.createServer(function (request, response) {
