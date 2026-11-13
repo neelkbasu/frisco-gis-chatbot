@@ -8,6 +8,8 @@
       content="Ask Walnut — your guide to Frisco parks, trails, and amenities."
     />
     <title>Ask Walnut | Frisco Parks Guide</title>
+    <!-- ArcGIS Maps SDK styles for the City park map panel. -->
+    <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/light/main.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -30,6 +32,8 @@
         </div>
       </header>
 
+      <!-- Chat on the left, City park map on the right (stacked on phones). -->
+      <div class="workspace">
       <!-- Chat messages are shown here. -->
       <section class="chat-panel" aria-label="Chat with Ask Walnut">
         <div
@@ -110,8 +114,20 @@
           information with official City of Frisco sources.
         </p>
       </section>
+
+      <!-- The City's park map highlights the parks and amenities in each answer. -->
+      <section class="map-panel" aria-label="Map of Frisco parks">
+        <div class="map-header">
+          <h2>Park map</h2>
+          <p id="map-status" class="map-status" role="status">Loading the City park map…</p>
+        </div>
+        <div id="map" class="map"></div>
+      </section>
+      </div>
     </main>
 
+    <script src="https://js.arcgis.com/4.31/"></script>
+    <script src="map.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

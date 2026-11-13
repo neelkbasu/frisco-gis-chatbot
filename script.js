@@ -80,13 +80,32 @@ function addResultCards(message, results) {
   const resultList = document.createElement("div");
   resultList.className = "result-list";
 
-  results.forEach(function (result) {
+  results.forEach(function (result, index) {
     const card = document.createElement("article");
     const title = document.createElement("h3");
     const details = document.createElement("p");
 
     card.className = "result-card";
-    title.textContent = result.park || result.name || "Frisco facility";
+
+    // Each card gets the same number as its pin on the map (when the map is
+    // loaded), and clicking the card zooms the map to it.
+    if (globalThis.FriscoMap) {
+      const number = document.createElement("span");
+      number.className = "result-number";
+      number.textContent = String(index + 1);
+      title.appendChild(number);
+      card.dataset.onMap = "";
+      card.tabIndex = 0;
+      card.addEventListener("click", function (event) {
+        if (event.target.closest("a")) return;
+        globalThis.FriscoMap?.focusResult(result);
+      });
+      card.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") globalThis.FriscoMap?.focusResult(result);
+      });
+    }
+
+    title.appendChild(document.createTextNode(result.park || result.name || "Frisco facility"));
     details.textContent = [
       result.facilityType ? `Type: ${amenityDefinitions?.[result.facilityType]?.singular || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
@@ -256,6 +275,12 @@ async function sendMessage(text) {
       data.source,
       data.distanceNote
     );
+
+    // Answers that searched City GIS also update the map, including empty
+    // results, which clear the previous answer's pins.
+    if (data.source) {
+      globalThis.FriscoMap?.showResults(data.results || [], location);
+    }
   } catch (error) {
     loadingMessage.remove();
     addMessage(error.message, "assistant");
