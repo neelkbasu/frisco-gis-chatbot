@@ -8,6 +8,7 @@ const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_RADIUS_MILES = 5;
 const { asksForNearby } = require("../lib/search-language");
 const { AMENITIES, AMENITY_NAMES } = require("../lib/amenities");
+const { CITY_AMENITY_CATEGORIES } = require("../lib/frisco-gis");
 const supportedLabels = Object.values(AMENITIES).map((amenity) => amenity.plural).join(", ");
 const routingDescriptions = Object.entries(AMENITIES).map(([type, amenity]) =>
   `${type}: ${amenity.plural} (keywords: ${amenity.keywords.join(", ")})`
@@ -64,6 +65,32 @@ const facilityTool = {
   },
 };
 
+const parkAmenitiesTool = {
+  name: "get_park_amenities",
+  description:
+    "Check which amenities one named Frisco park or City facility has, using its City of Frisco GIS record.",
+  parametersJsonSchema: {
+    type: "object",
+    properties: {
+      parkName: {
+        type: "string",
+        description: "Name of the park or City facility the resident names, such as Frisco Commons Park or Frisco Athletic Center.",
+      },
+      amenities: {
+        type: "array",
+        items: { type: "string", enum: CITY_AMENITY_CATEGORIES },
+        description: "Every amenity the resident asks about, mapped to these exact City names (for example sports fields -> Practice & Game Fields, trails -> Walking Trail, bathrooms -> Restrooms). Empty when they ask what the park has in general.",
+      },
+      unmatched: {
+        type: "array",
+        items: { type: "string" },
+        description: "Anything the resident asks about that matches none of the City names, in their own words.",
+      },
+    },
+    required: ["parkName"],
+  },
+};
+
 // Retry temporary Gemini failures. The first request is immediate, then
 // retries wait about 1, 2, and 4 seconds (exponential backoff).
 async function callGeminiWithRetry(ai, request) {
@@ -117,12 +144,12 @@ async function understandRequest(message, latitude, longitude) {
       systemInstruction:
         "You route requests for the Frisco City Assistant. " +
         `Call find_nearby_facilities for these supported types: ${routingDescriptions}. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. ` +
-        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-place amenity questions without nearby wording, including athletic centers and sports complexes. Questions asking whether a place has an amenity are supported, not unavailable details. For example, Does Frisco Athletic Center have racquetball, swimming, or restrooms? must call find_nearby_facilities with the requested facilityType, searchMode at_park, and parkName Frisco Athletic Center. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
+        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-place amenity questions without nearby wording, including athletic centers and sports complexes. Questions asking whether a place has an amenity are supported, not unavailable details. For example, Does Frisco Athletic Center have swimming? must call find_nearby_facilities with the requested facilityType, searchMode at_park, and parkName Frisco Athletic Center. When the resident names one park or facility and asks about two or more amenities, or asks what it has in general, call get_park_amenities instead and include every amenity they mention; for example, Does J.C. Grant Park have a playground, picnic areas, or a dog park?If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
         "Call unavailable_information when the question requires trail length or route mileage, opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
         "Do not call the tool for any other topic. Never invent facility information or trail lengths.",
-      tools: [{ functionDeclarations: [facilityTool, {
+      tools: [{ functionDeclarations: [facilityTool, parkAmenitiesTool, {
         name: "clarify_park",
         description: "Ask for the park name when the resident refers to this park or my park without naming it.",
         parametersJsonSchema: { type: "object", properties: {} },
@@ -146,7 +173,7 @@ async function understandRequest(message, latitude, longitude) {
   });
 
   return response.functionCalls?.find(function (functionCall) {
-    return ["find_nearby_facilities", "clarify_park", "unavailable_information"].includes(functionCall.name);
+    return ["find_nearby_facilities", "get_park_amenities", "clarify_park", "unavailable_information"].includes(functionCall.name);
   });
 }
 
@@ -167,8 +194,8 @@ function getMcpUrl(request) {
   throw new Error("The MCP server URL is not configured.");
 }
 
-// Call the existing MCP tool so this file never duplicates ArcGIS logic.
-async function callFacilityTool(mcpUrl, input) {
+// Call one tool on the MCP server so this file never duplicates ArcGIS logic.
+async function callMcpTool(mcpUrl, name, input) {
   const client = new Client(
     { name: "frisco-chat-api", version: "1.0.0" },
     { versionNegotiation: { mode: "auto" } }
@@ -177,25 +204,30 @@ async function callFacilityTool(mcpUrl, input) {
 
   try {
     await client.connect(transport);
-    const toolResult = await client.callTool({
-      name: "find_nearby_facilities",
-      arguments: input,
-    });
+    const toolResult = await client.callTool({ name, arguments: input });
 
     if (toolResult.isError) {
-      throw new Error("The Frisco GIS tool returned an error.");
+      throw new Error(`The Frisco GIS tool ${name} returned an error.`);
     }
 
-    const results = toolResult.structuredContent?.results;
-
-    if (!Array.isArray(results)) {
+    if (!toolResult.structuredContent) {
       throw new Error("The Frisco GIS tool returned an unexpected response.");
     }
 
-    return results;
+    return toolResult.structuredContent;
   } finally {
     await client.close();
   }
+}
+
+async function callFacilityTool(mcpUrl, input) {
+  const { results } = await callMcpTool(mcpUrl, "find_nearby_facilities", input);
+
+  if (!Array.isArray(results)) {
+    throw new Error("The Frisco GIS tool returned an unexpected response.");
+  }
+
+  return results;
 }
 
 // Create a concise reply using only facts already returned by City GIS.
@@ -213,6 +245,49 @@ function buildReply(results, facilityType, radiusMiles) {
     `Showing ${results.length} nearby ${parkLabel} with ${pluralFacilityLabel} (up to five parks). ` +
     `${closest.name || closest.park || "The first result"} is the closest, about ${closest.distanceMiles} miles away.`
   );
+}
+
+// Join names as "a and b" or "a, b, and c".
+function listNames(names) {
+  return names.length < 3
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+}
+
+// Answer "does this park have …?" using only the park's City record. Every
+// amenity the resident asked about is answered, including ones not recorded.
+function buildParkAmenitiesReply(park, parkName, requested, unmatched) {
+  if (!park) {
+    return `I couldn't find a park named ${parkName} in the City of Frisco GIS records.`;
+  }
+
+  const recorded = park.amenities.map(function (amenity) { return amenity.toLowerCase(); });
+  const sentences = [];
+
+  if (requested.length === 0) {
+    sentences.push(park.amenities.length
+      ? `The City GIS records list these amenities at ${park.name}: ${listNames(park.amenities)}.`
+      : `The City GIS records don't list any amenities for ${park.name}.`);
+  } else {
+    const found = requested.filter(function (amenity) { return recorded.includes(amenity.toLowerCase()); });
+    const missing = requested.filter(function (amenity) { return !recorded.includes(amenity.toLowerCase()); });
+
+    if (found.length) {
+      sentences.push(`The City GIS records list ${listNames(found)} at ${park.name}.`);
+    }
+    if (missing.length) {
+      sentences.push(
+        `${found.length ? "They don't" : "The City GIS records don't"} list ${listNames(missing)}` +
+        `${found.length ? "" : ` at ${park.name}`}, though that doesn't confirm ${missing.length === 1 ? "it's" : "they're"} absent.`
+      );
+    }
+  }
+
+  if (unmatched.length) {
+    sentences.push(`I can't check ${listNames(unmatched)} with the City GIS records.`);
+  }
+
+  return sentences.join(" ");
 }
 
 function validateBody(body) {
@@ -318,6 +393,63 @@ module.exports = async function handler(request, response) {
       sendJson(response, 200, {
         reply: "Which park are you at? Please include its name in your amenity question, or ask for the nearest facility using your location.",
         results: [],
+      });
+      return;
+    }
+
+    if (functionCall.name === "get_park_amenities") {
+      const parkName = String(functionCall.args?.parkName || "").trim();
+
+      if (!parkName) {
+        sendJson(response, 200, {
+          reply: "Which park are you asking about? Please include its name in your question.",
+          results: [],
+        });
+        return;
+      }
+
+      // Gemini sometimes lists a City category (e.g. "dog park") as unmatched,
+      // so compare those words with the category names before giving up.
+      const simplify = function (text) {
+        return text.toLowerCase().replace(/[^a-z]/g, "").replace(/s$/, "");
+      };
+      const matchCategory = function (word) {
+        return CITY_AMENITY_CATEGORIES.find(function (category) {
+          return simplify(category) === simplify(word);
+        });
+      };
+      const unmatchedWords = (Array.isArray(functionCall.args?.unmatched) ? functionCall.args.unmatched : [])
+        .filter(function (word) { return typeof word === "string" && word.trim(); })
+        .map(function (word) { return word.trim(); });
+
+      // Keep only valid City names, without duplicates.
+      const requested = [...new Set([
+        ...(Array.isArray(functionCall.args?.amenities) ? functionCall.args.amenities : [])
+          .filter(function (amenity) { return CITY_AMENITY_CATEGORIES.includes(amenity); }),
+        ...unmatchedWords.map(matchCategory).filter(Boolean),
+      ])];
+      const unmatched = unmatchedWords.filter(function (word) { return !matchCategory(word); });
+
+      const { park } = await callMcpTool(getMcpUrl(request), "get_park_amenities", { parkName });
+
+      sendJson(response, 200, {
+        reply: buildParkAmenitiesReply(park, parkName, requested, unmatched),
+        // One card for the park; no facilityType, so the card shows no "Type".
+        results: park ? [{
+          name: park.name,
+          park: park.name,
+          facilityType: null,
+          address: park.address,
+          latitude: null,
+          longitude: null,
+          distanceMiles: null,
+          website: park.website,
+          description: park.description,
+          imageUrl: park.imageUrl,
+          source: park.source,
+        }] : [],
+        source: "City of Frisco GIS",
+        distanceNote: null,
       });
       return;
     }

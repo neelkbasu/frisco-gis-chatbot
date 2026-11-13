@@ -1,4 +1,4 @@
-const { findNearbyFacilities } = require("../lib/frisco-gis");
+const { findNearbyFacilities, getParkAmenities } = require("../lib/frisco-gis");
 const { AMENITY_NAMES } = require("../lib/amenities");
 
 let nodeHandlerPromise;
@@ -67,6 +67,60 @@ async function getNodeHandler() {
                 // Data flows: AI client -> MCP tool -> Frisco GIS -> MCP result.
                 const results = await findNearbyFacilities(input);
                 const response = { results };
+
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: JSON.stringify(response, null, 2),
+                    },
+                  ],
+                  structuredContent: response,
+                };
+              } catch (error) {
+                return {
+                  isError: true,
+                  content: [
+                    {
+                      type: "text",
+                      text: `Unable to search the City of Frisco GIS: ${error.message}`,
+                    },
+                  ],
+                };
+              }
+            }
+          );
+
+          // Answers "does this park have …?" for any number of amenities.
+          server.registerTool(
+            "get_park_amenities",
+            {
+              title: "Get a Frisco park's amenities",
+              description:
+                "Look up one named park in City of Frisco GIS and list every amenity its record includes.",
+              inputSchema: z.object({
+                parkName: z.string().trim().min(1),
+              }),
+              outputSchema: z.object({
+                park: z.object({
+                  name: z.string(),
+                  address: z.string().nullable(),
+                  website: z.string().nullable(),
+                  description: z.string().nullable(),
+                  imageUrl: z.string().nullable(),
+                  amenities: z.array(z.string()),
+                  source: z.literal("City of Frisco GIS"),
+                }).nullable(),
+              }),
+              annotations: {
+                readOnlyHint: true,
+                idempotentHint: true,
+                openWorldHint: true,
+              },
+            },
+            async function runParkAmenities({ parkName }) {
+              try {
+                const response = { park: await getParkAmenities(parkName) };
 
                 return {
                   content: [
