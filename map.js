@@ -15,10 +15,13 @@
   const BLUE = [45, 105, 181];
   // Map scale used when zooming to a single point (about a few city blocks).
   const POINT_SCALE = 4000;
+  // How far (in points) a result's number badge sits up and to the right of
+  // the amenity, so the City's own icon underneath stays visible.
+  const BADGE_OFFSET = 13;
 
   const status = document.querySelector("#map-status");
   let mapReady;
-  let spellingsReady;
+  let configReady;
   // Every showResults call gets a higher number; a slower, older update
   // that finishes later is discarded instead of mixing with the newer one.
   let latestUpdate = 0;
@@ -79,7 +82,9 @@
 
             Promise.all([view.when(), projection.load()])
               .then(function () {
-                resolve({ view, resultsLayer, parkLayer, Graphic, Point, projection });
+                const map = { view, resultsLayer, parkLayer, Graphic, Point, projection };
+                loadConfig().then(function (config) { enableTooltips(map, config); });
+                resolve(map);
               })
               .catch(reject);
           }, reject);
@@ -99,20 +104,106 @@
     return mapReady;
   }
 
-  // Displayed name -> park-layer spelling, for the few parks whose names
-  // differ between the two City layers (served from lib/park-names.js).
-  function loadSpellings() {
-    if (!spellingsReady) {
-      spellingsReady = fetch("/api/amenities")
+  // Names shared by the server through /api/amenities:
+  //   spellings:   displayed park name -> park-layer spelling (park-names.js)
+  //   pointNames:  amenity-layer park spelling -> displayed park name
+  //   labels:      City amenity value -> friendly name ("Restrooms" -> "restroom")
+  //   typeLabels:  chatbot facility type -> friendly name
+  function loadConfig() {
+    if (!configReady) {
+      configReady = fetch("/api/amenities")
         .then(function (response) { return response.ok ? response.json() : {}; })
+        .catch(function () { return {}; })
         .then(function (data) {
-          return new Map((data.parkNameSpellings || []).map(function (entry) {
-            return [entry.display.toUpperCase(), entry.park];
-          }));
-        })
-        .catch(function () { return new Map(); });
+          const spellings = data.parkNameSpellings || [];
+          return {
+            spellings: new Map(spellings.map(function (entry) {
+              return [entry.display.toUpperCase(), entry.park];
+            })),
+            pointNames: new Map(spellings.filter(function (entry) { return entry.point; }).map(function (entry) {
+              return [entry.point.toUpperCase(), entry.display];
+            })),
+            labels: new Map(Object.entries(data.amenityLabels || {})),
+            typeLabels: new Map(Object.entries(data.amenities || {}).map(function ([type, amenity]) {
+              return [type, amenity.singular];
+            })),
+          };
+        });
     }
-    return spellingsReady;
+    return configReady;
+  }
+
+  // "basketball court" -> "Basketball Court"; "baseball/softball field" ->
+  // "Baseball/Softball Field".
+  function titleCase(text) {
+    return String(text).replace(/(^|[\s/&-])([a-z])/g, function (match, before, letter) {
+      return before + letter.toUpperCase();
+    });
+  }
+
+  // Tooltip text for a hovered graphic: a numbered result, or any of the
+  // City's amenity icons.
+  function tooltipFor(graphic, config) {
+    if (graphic.attributes?.tooltip) return graphic.attributes.tooltip;
+
+    const amenity = graphic.attributes?.Amenity;
+    if (!amenity) return null;
+
+    const label = titleCase(config.labels.get(amenity) || amenity);
+    const park = graphic.attributes.Park;
+    const parkName = park ? config.pointNames.get(String(park).toUpperCase()) || park : null;
+    return parkName ? `${label} · ${parkName}` : label;
+  }
+
+  // Show a small tooltip naming whatever amenity or result is under the
+  // pointer. Touch screens have no hover; tapping an icon opens the City's
+  // own popup instead.
+  function enableTooltips(map, config) {
+    const container = map.view.container;
+    if (!container) return;
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "map-tooltip";
+    tooltip.hidden = true;
+    container.appendChild(tooltip);
+
+    const amenityLayer = map.view.map.allLayers.find(function (layer) {
+      return layer.type === "feature" && /ParkAmenities_Test/i.test(layer.url || "");
+    });
+    if (amenityLayer) {
+      // The City's icons only request the amenity type; add the park name.
+      amenityLayer.outFields = ["Amenity", "Park"];
+    }
+
+    let latestMove = 0;
+    map.view.on("pointer-move", function (event) {
+      const move = ++latestMove;
+      map.view.hitTest(event, { include: [map.resultsLayer, amenityLayer].filter(Boolean) })
+        .then(function (response) {
+          // Ignore answers for older pointer positions.
+          if (move !== latestMove) return;
+
+          const text = response.results
+            .map(function (hit) { return hit.graphic && tooltipFor(hit.graphic, config); })
+            .find(Boolean);
+          if (!text) {
+            tooltip.hidden = true;
+            container.style.cursor = "";
+            return;
+          }
+
+          tooltip.textContent = text;
+          tooltip.style.left = `${event.x + 14}px`;
+          tooltip.style.top = `${event.y + 14}px`;
+          tooltip.hidden = false;
+          container.style.cursor = "pointer";
+        })
+        .catch(function () { /* hit tests can be interrupted by map movement */ });
+    });
+    map.view.on("pointer-leave", function () {
+      latestMove += 1;
+      tooltip.hidden = true;
+    });
   }
 
   function nameOf(result) {
@@ -134,7 +225,7 @@
     const outlines = new Map();
     if (!names.length) return outlines;
 
-    const spellings = await loadSpellings();
+    const { spellings } = await loadConfig();
     const displayByParkName = new Map();
     for (const name of names) {
       displayByParkName.set((spellings.get(name.toUpperCase()) || name).toUpperCase(), name.toUpperCase());
@@ -157,31 +248,58 @@
     return outlines;
   }
 
-  // A numbered pin matching the number on the result card.
-  function numberedPin(map, geometry, number) {
-    return [
-      new map.Graphic({
+  // A result marker numbered like its card. On an amenity, a red ring circles
+  // the City's own icon and the number sits as a badge at its top-right, so
+  // the icon stays visible. A park-level result gets a plain numbered pin.
+  function resultMarker(map, geometry, number, tooltip, onAmenity) {
+    const attributes = { tooltip };
+    const offset = onAmenity ? BADGE_OFFSET : 0;
+    const graphics = [];
+
+    if (onAmenity) {
+      graphics.push(new map.Graphic({
         geometry,
+        attributes,
         symbol: {
           type: "simple-marker",
           style: "circle",
-          size: 22,
+          size: 32,
+          color: [0, 0, 0, 0],
+          outline: { color: RED, width: 3 },
+        },
+      }));
+    }
+
+    graphics.push(
+      new map.Graphic({
+        geometry,
+        attributes,
+        symbol: {
+          type: "simple-marker",
+          style: "circle",
+          size: onAmenity ? 18 : 22,
           color: RED,
           outline: { color: [255, 255, 255], width: 2 },
+          xoffset: offset,
+          yoffset: offset,
         },
       }),
       new map.Graphic({
         geometry,
+        attributes,
         symbol: {
           type: "text",
           text: String(number),
           color: [255, 255, 255],
           verticalAlignment: "middle",
           horizontalAlignment: "center",
-          font: { size: 10, weight: "bold" },
+          font: { size: onAmenity ? 9 : 10, weight: "bold" },
+          xoffset: offset,
+          yoffset: offset,
         },
-      }),
-    ];
+      })
+    );
+    return graphics;
   }
 
   // Zoom to the given geometries; single points get a street-level scale.
@@ -214,6 +332,7 @@
 
     try {
       const map = await loadMap();
+      const config = await loadConfig();
       const names = [...new Set(results.map(nameOf).filter(Boolean))];
       const outlines = await findParkOutlines(map, names);
 
@@ -236,11 +355,17 @@
       // location when known, otherwise in the middle of its park's outline.
       let pinCount = 0;
       results.forEach(function (result, index) {
-        const point = hasCoordinates(result)
+        const onAmenity = hasCoordinates(result);
+        const point = onAmenity
           ? toMapPoint(map, result.latitude, result.longitude)
           : outlines.get(nameOf(result).toUpperCase())?.centroid;
         if (point) {
-          graphics.push(...numberedPin(map, point, index + 1));
+          // e.g. "#1 · Basketball Court · Gallegos Park"
+          const type = config.typeLabels.get(result.facilityType);
+          const tooltip = [`#${index + 1}`, type && titleCase(type), nameOf(result)]
+            .filter(Boolean)
+            .join(" · ");
+          graphics.push(...resultMarker(map, point, index + 1, tooltip, onAmenity));
           pinCount += 1;
         }
       });

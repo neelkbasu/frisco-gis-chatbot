@@ -468,11 +468,31 @@ input:disabled {
 }
 
 .map {
+  position: relative;
   flex: 1;
   min-height: 340px;
   margin: 0 12px 12px;
   border-radius: 20px;
   overflow: hidden;
+}
+
+/* Hover label for amenity icons and numbered results on the map. */
+.map-tooltip {
+  position: absolute;
+  z-index: 2;
+  max-width: 260px;
+  padding: 5px 9px;
+  background: var(--navy);
+  color: var(--white);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(23, 54, 93, 0.25);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.map-tooltip[hidden] {
+  display: none;
 }
 
 /* Cards match the numbered pins on the map and zoom to them when clicked. */

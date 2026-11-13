@@ -19,7 +19,13 @@ const OUTLINES = {
 // return a promise to hold a park query open; `sdkFails` simulates the SDK
 // not loading.
 function loadMap({ queryDelay, sdkFails = false } = {}) {
-  const state = { layer: null, goTo: [], queries: [], status: { textContent: "" }, bodyClasses: new Set() };
+  const state = {
+    layer: null, goTo: [], queries: [], status: { textContent: "" }, bodyClasses: new Set(),
+    // Hover simulation: handlers registered with view.on, and what the next
+    // hit test under the pointer returns.
+    handlers: {}, hits: [], amenityLayer: { type: "feature", url: "https://example/ParkAmenities_Test/FeatureServer/0" },
+    elements: [],
+  };
 
   class GraphicsLayer {
     constructor() { this.graphics = []; state.layer = this; }
@@ -27,11 +33,22 @@ function loadMap({ queryDelay, sdkFails = false } = {}) {
     addMany(graphics) { this.graphics.push(...graphics); }
   }
   const modules = {
-    "esri/WebMap": class { when(callback) { callback(); return Promise.resolve(); } add() {} },
+    "esri/WebMap": class {
+      constructor() { this.allLayers = [state.amenityLayer]; }
+      when(callback) { callback(); return Promise.resolve(); }
+      add() {}
+    },
     "esri/views/MapView": class {
-      constructor() { this.spatialReference = { wkid: 2276 }; this.scale = 50000; }
+      constructor(options) {
+        this.map = options.map;
+        this.spatialReference = { wkid: 2276 };
+        this.scale = 50000;
+        this.container = { style: {}, appendChild() {} };
+      }
       when() { return Promise.resolve(); }
       goTo(target) { state.goTo.push(target); return Promise.resolve(); }
+      on(name, handler) { state.handlers[name] = handler; }
+      hitTest() { return Promise.resolve({ results: state.hits.map((graphic) => ({ graphic })) }); }
     },
     "esri/layers/GraphicsLayer": GraphicsLayer,
     "esri/layers/FeatureLayer": class {
@@ -55,7 +72,11 @@ function loadMap({ queryDelay, sdkFails = false } = {}) {
 
   const document = {
     querySelector: (selector) => (selector === "#map-status" ? state.status : null),
-    createElement: () => ({}),
+    createElement: () => {
+      const element = { style: {} };
+      state.elements.push(element);
+      return element;
+    },
     head: {
       // Only reached when the SDK is missing: report the load failure.
       appendChild(element) { if (element.src) setTimeout(() => element.onerror()); },
@@ -100,10 +121,55 @@ test("an answer gets outlines, numbered pins, and the resident's location", asyn
   const types = state.layer.graphics.map((graphic) => graphic.symbol.type);
   assert.equal(types.filter((type) => type === "simple-fill").length, 2);
   assert.deepEqual(numbersOnMap(state), ["1", "2"]);
-  // Two red pins plus the resident's blue location dot.
-  assert.equal(types.filter((type) => type === "simple-marker").length, 3);
+  // A ring and a number badge per amenity, plus the resident's location dot.
+  assert.equal(types.filter((type) => type === "simple-marker").length, 5);
   assert.equal(state.status.textContent, "Showing 2 numbered results from Walnut's answer.");
   assert.equal(state.goTo.length, 1);
+});
+
+test("amenity results keep the City's icon visible and name the result", async () => {
+  const { FriscoMap, state } = loadMap();
+  await FriscoMap.showResults([
+    { park: "Gallegos Park", facilityType: "basketball", latitude: 33.149, longitude: -96.828, distanceMiles: 0.26 },
+  ], null);
+
+  const [ring, badge, number] = state.layer.graphics.filter((graphic) => graphic.symbol.type !== "simple-fill");
+  // The ring is hollow, so the City's basketball icon shows through it...
+  assert.equal(ring.symbol.color[3], 0);
+  assert.equal(ring.symbol.xoffset, undefined);
+  // ...and the number sits beside the icon instead of on top of it.
+  assert.equal(badge.symbol.xoffset, 13);
+  assert.equal(number.symbol.yoffset, 13);
+  assert.equal(number.attributes.tooltip, "#1 · Basketball Court · Gallegos Park");
+});
+
+test("hovering an amenity icon shows its friendly name and park", async () => {
+  const { FriscoMap, state } = loadMap();
+  await FriscoMap.showResults([], null);
+  await new Promise((resolve) => setTimeout(resolve));
+  const tooltip = state.elements.find((element) => element.className === "map-tooltip");
+  assert.deepEqual([...state.amenityLayer.outFields], ["Amenity", "Park"]);
+
+  async function hover(...graphics) {
+    state.hits = graphics;
+    state.handlers["pointer-move"]({ x: 100, y: 50 });
+    await new Promise((resolve) => setTimeout(resolve));
+  }
+
+  await hover({ attributes: { Amenity: "Restrooms", Park: "Shpeherds Glen Park" } });
+  assert.equal(tooltip.hidden, false);
+  assert.equal(tooltip.textContent, "Restroom · Shepherds Glen Park");
+  assert.equal(tooltip.style.left, "114px");
+
+  await hover({ attributes: { Amenity: "Basketball" } });
+  assert.equal(tooltip.textContent, "Basketball Court");
+
+  // A City category not yet in the registry keeps the City's own name.
+  await hover({ attributes: { Amenity: "Horseshoe Pit", Park: "Gallegos Park" } });
+  assert.equal(tooltip.textContent, "Horseshoe Pit · Gallegos Park");
+
+  await hover();
+  assert.equal(tooltip.hidden, true);
 });
 
 test("park-level results are pinned at their park, without a location dot", async () => {
