@@ -11,18 +11,12 @@ Frisco GIS, including addresses, park websites, and nearby distances.
 - “Does Frisco Athletic Center have swimming?”
 - “Are there restrooms at Frisco Commons Park?”
 
-Gemini interprets the question. An MCP search tool queries two ArcGIS layers:
-amenity points provide facility locations, and ParkApp provides park details
-and recorded amenity flags.
+Gemini understands your question and searches City of Frisco GIS data.
+Results include up to five parks. Distances are straight-line distances.
+Missing information does not necessarily mean an amenity is absent.
 
-Nearby recommendations show up to five distinct parks, using the nearest
-recorded amenity point in each. Named-place searches can show individual points;
-if no points are mapped, a positive ParkApp flag can still establish recorded
-presence. Missing records do not prove an amenity is absent.
-
-Distances are straight-line distances, not travel distances. The app does not
-provide live opening hours, closures, availability, reservations, directions,
-or trail mileage. A general park-details tool has not been added.
+The app does not provide current hours, closures, reservations, directions,
+or trail mileage.
 
 ## Run locally
 
@@ -48,50 +42,30 @@ Open http://127.0.0.1:3000. Demo Mode uses a sample Frisco location.
 Turn it off to use your browser's location. Restart the server after editing
 server code or environment variables.
 
-Each contributor needs their own local configuration. Never commit API keys;
+Each computer needs its own local configuration. Never commit API keys;
 `.env.local` and `node_modules/` are ignored by Git.
 
-## Project files
+## Test
 
-| File | Purpose |
-| --- | --- |
-| `index.html`, `style.css`, `script.js` | Chat interface, location handling, and result cards |
-| `api/chat.js` | Gemini routing and replies |
-| `api/mcp.js` | Validated MCP search tool |
-| `api/amenities.js` | Browser labels and keywords |
-| `lib/frisco-gis.js` | ArcGIS searches, distances, and park details |
-| `lib/park-names.js` | Known spelling differences between GIS layers |
-| `lib/amenities/` | Shared amenity definitions, split by contributor |
-
-## Add an amenity
-
-Edit your assigned file: `neel.js`, `camilly.js`, `rosa.js`, `agnes.js`,
-or `research.js` under `lib/amenities/`. Follow this format:
-
-```js
-pickleball: {
-  gisValue: "Pickleball",
-  parkField: "Pickleball",
-  singular: "pickleball court",
-  plural: "pickleball courts",
-  keywords: ["pickleball"],
-},
-```
-
-Verify the exact GIS category and ParkApp field names. The registry updates
-search mappings, MCP types, Gemini instructions, and browser labels automatically.
-New categories without mapped points need special consideration for nearby searches.
-
-## Test and deploy
-
-Run `npm test` for offline regression tests. Before merging, also try nearby,
-citywide, and named-place questions locally and in a Vercel preview.
-
-For a live MCP smoke check:
+Run the automated checks:
 
 ```bash
-npm run test:mcp -- 33.1507 -96.8236 5 basketball
+npm test
 ```
+
+These tests check the code using sample data. They do not need an API key.
+
+For a full check, start the app and try the example questions above:
+
+- Keep Demo Mode on to test with the sample Frisco location.
+- Turn it off and allow location access to test nearby searches from your location.
+- Check that cards show park names, available addresses, and website links.
+- Nearby results should show distances and each park once.
+- Named-place and citywide results should not show distances.
+
+Repeat these checks on a Vercel preview before deploying changes.
+
+## Vercel
 
 On Vercel, configure `GEMINI_API_KEY` and `MCP_SERVER_URL` (your deployment's
 `/api/mcp` URL). Local development resolves the MCP URL automatically.
