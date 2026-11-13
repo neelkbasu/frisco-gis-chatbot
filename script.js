@@ -91,7 +91,7 @@ function addResultCards(message, results) {
       result.facilityType ? `Type: ${amenityDefinitions?.[result.facilityType]?.singular || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
       Number.isFinite(result.distanceMiles)
-        ? `Distance: ${result.distanceMiles} miles`
+        ? `Distance from you: ${result.distanceMiles} miles`
         : "",
     ]
       .filter(Boolean)
@@ -99,6 +99,12 @@ function addResultCards(message, results) {
 
     card.appendChild(title);
     card.appendChild(details);
+
+    for (const trail of result.trailLengths || []) {
+      const length = document.createElement("p");
+      length.textContent = `${trail.name}: ${trail.lengthMiles} miles (recorded loop length)`;
+      card.appendChild(length);
+    }
 
     if (result.website) {
       const website = document.createElement("a");

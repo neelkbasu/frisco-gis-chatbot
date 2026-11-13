@@ -8,6 +8,7 @@ Frisco GIS, including addresses, park websites, and nearby distances.
 
 - “Find basketball courts near me.”
 - “Which parks have splash pads?”
+- “How long is Frisco Commons Walking Loop?”
 - “Does Frisco Athletic Center have swimming?”
 - “Are there restrooms at Frisco Commons Park?”
 
@@ -16,7 +17,10 @@ Results include up to five parks. Distances are straight-line distances.
 Missing information does not necessarily mean an amenity is absent.
 
 The app does not provide current hours, closures, reservations, directions,
-or trail mileage.
+or complete route planning. Recorded walking-loop lengths are available only
+for verified park matches. Trail cards show loop length separately from distance
+from you. Missing, ambiguous, and segment-only lengths are left out; segments
+are never added together.
 
 ## Run locally
 

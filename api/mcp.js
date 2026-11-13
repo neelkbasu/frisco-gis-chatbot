@@ -1,3 +1,4 @@
+const { getTrailLengths, addTrailLengths } = require("../lib/trail-lengths");
 const { findNearbyFacilities, getParkAmenities } = require("../lib/frisco-gis");
 const { AMENITY_NAMES } = require("../lib/amenities");
 
@@ -14,6 +15,9 @@ async function getNodeHandler() {
       const { createMcpHandler, McpServer } = serverSdk;
       const { toNodeHandler } = nodeSdk;
 
+      const trailLengthSchema = z.object({
+        park: z.string(), name: z.string(), lengthMiles: z.number().positive(), sourceUrl: z.string(),
+      });
       const facilityResultSchema = z.object({
         name: z.string().nullable(),
         park: z.string().nullable(),
@@ -22,6 +26,7 @@ async function getNodeHandler() {
         latitude: z.number().nullable(),
         longitude: z.number().nullable(),
         distanceMiles: z.number().nullable(),
+        trailLengths: z.array(trailLengthSchema).optional(),
         amenities: z.string().nullable().optional(),
         website: z.string().nullable(),
         description: z.string().nullable(),
@@ -65,7 +70,7 @@ async function getNodeHandler() {
               try {
                 // Reusing this function keeps all ArcGIS logic in one place.
                 // Data flows: AI client -> MCP tool -> Frisco GIS -> MCP result.
-                const results = await findNearbyFacilities(input);
+                const results = await addTrailLengths(await findNearbyFacilities(input));
                 const response = { results };
 
                 return {
@@ -144,6 +149,21 @@ async function getNodeHandler() {
               }
             }
           );
+
+          server.registerTool("get_trail_lengths", {
+            title: "Get a recorded walking-loop length",
+            description: "Get a verified individual walking-loop length by exact park or loop name. Never sums segments; an empty list means no verified match.",
+            inputSchema: z.object({ placeName: z.string().trim().min(1) }),
+            outputSchema: z.object({ trails: z.array(trailLengthSchema) }),
+            annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+          }, async ({ placeName }) => {
+            try {
+              const response = { trails: await getTrailLengths(placeName) };
+              return { content: [{ type: "text", text: JSON.stringify(response) }], structuredContent: response };
+            } catch {
+              return { isError: true, content: [{ type: "text", text: "Trail length information is temporarily unavailable." }] };
+            }
+          });
 
           return server;
         },

@@ -20,7 +20,7 @@ const UNSUPPORTED_REPLY =
 // These responses are written here, rather than generated, so unavailable
 // details never become invented GIS facts or promises of future features.
 const UNAVAILABLE_REPLIES = {
-  trail_length: "I can't answer trail lengths yet because this GIS data doesn't include route mileage. Ask Walnut is a work in progress, but I can help you find walking trails or accessible trails.",
+  trail_length: "Please name the park or walking loop. I can check recorded lengths for verified walking loops; I do not combine trail segments.",
   live_status: "I can't check current opening hours, closures, working facilities, or available parking spaces yet. Ask Walnut is a work in progress. Please check the official City of Frisco website for current information.",
   directions: "Walking and driving directions aren't implemented yet—Ask Walnut is a work in progress. I can show recorded facility locations and straight-line distances for nearby searches.",
   other: "I can't answer that detail with the information currently available. Ask Walnut is a work in progress! I can help you find supported park amenities instead.",
@@ -147,9 +147,15 @@ async function understandRequest(message, latitude, longitude) {
         "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-place amenity questions without nearby wording, including athletic centers and sports complexes. Questions asking whether a place has an amenity are supported, not unavailable details. For example, Does Frisco Athletic Center have swimming? must call find_nearby_facilities with the requested facilityType, searchMode at_park, and parkName Frisco Athletic Center. When the resident names one park or facility and asks about two or more amenities, or asks what it has in general, call get_park_amenities instead and include every amenity they mention; for example, Does J.C. Grant Park have a playground, picnic areas, or a dog park?If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
-        "Call unavailable_information when the question requires trail length or route mileage, opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
+        "For a trail-length question, call get_trail_lengths with the named park or walking loop, expanding a clear park abbreviation to its full name. If no trail or park is named, call clarify_park. Never combine segment lengths or infer an accessible route length from a walking loop. Call unavailable_information when the question requires opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
         "Do not call the tool for any other topic. Never invent facility information or trail lengths.",
       tools: [{ functionDeclarations: [facilityTool, parkAmenitiesTool, {
+        name: "get_trail_lengths",
+        description: "Look up a verified individual walking-loop length by park or loop name. Does not sum segments.",
+        parametersJsonSchema: {
+          type: "object", properties: { placeName: { type: "string" } }, required: ["placeName"],
+        },
+      }, {
         name: "clarify_park",
         description: "Ask for the park name when the resident refers to this park or my park without naming it.",
         parametersJsonSchema: { type: "object", properties: {} },
@@ -173,7 +179,7 @@ async function understandRequest(message, latitude, longitude) {
   });
 
   return response.functionCalls?.find(function (functionCall) {
-    return ["find_nearby_facilities", "get_park_amenities", "clarify_park", "unavailable_information"].includes(functionCall.name);
+    return ["find_nearby_facilities", "get_trail_lengths", "get_park_amenities", "clarify_park", "unavailable_information"].includes(functionCall.name);
   });
 }
 
@@ -391,8 +397,25 @@ module.exports = async function handler(request, response) {
 
     if (functionCall.name === "clarify_park") {
       sendJson(response, 200, {
-        reply: "Which park are you at? Please include its name in your amenity question, or ask for the nearest facility using your location.",
+        reply: "Which park or trail do you mean? Please include its name, or ask for the nearest facility using your location.",
         results: [],
+      });
+      return;
+    }
+
+    if (functionCall.name === "get_trail_lengths") {
+      const placeName = String(functionCall.args?.placeName || "").trim();
+      if (!placeName) {
+        sendJson(response, 200, { reply: "Which park or walking loop do you mean?", results: [] });
+        return;
+      }
+      const { trails } = await callMcpTool(getMcpUrl(request), "get_trail_lengths", { placeName });
+      if (!Array.isArray(trails)) throw new Error("Unexpected trail-length response.");
+      sendJson(response, 200, {
+        reply: trails.length
+          ? trails.map((trail) => `${trail.name} has a recorded loop length of ${trail.lengthMiles} miles.`).join(" ")
+          : `I couldn't verify a single recorded walking-loop length for ${placeName}. I haven't combined any trail segments.`,
+        results: [], source: "City of Frisco GIS",
       });
       return;
     }
