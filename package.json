@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test scripts/amenities.test.js",
+    "test": "node --test scripts/*.test.js",
     "test:gis": "node scripts/test-frisco-gis.js",
     "dev:api": "node --env-file=.env.local scripts/dev-api.js",
     "dev:mcp": "node scripts/dev-mcp.js",

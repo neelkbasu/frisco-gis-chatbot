@@ -28,7 +28,7 @@ const UNAVAILABLE_REPLIES = {
 const facilityTool = {
   name: "find_nearby_facilities",
   description:
-    "Search official Frisco GIS for supported amenities near the resident, at a named park, or parks with an amenity.",
+    "Search official Frisco GIS for supported amenities near the resident, at a named park or facility, or parks with an amenity.",
   parametersJsonSchema: {
     type: "object",
     properties: {
@@ -117,7 +117,7 @@ async function understandRequest(message, latitude, longitude) {
       systemInstruction:
         "You route requests for the Frisco City Assistant. " +
         `Call find_nearby_facilities for these supported types: ${routingDescriptions}. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. ` +
-        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-park amenity questions without nearby wording. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
+        "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-place amenity questions without nearby wording, including athletic centers and sports complexes. Questions asking whether a place has an amenity are supported, not unavailable details. For example, Does Frisco Athletic Center have racquetball, swimming, or restrooms? must call find_nearby_facilities with the requested facilityType, searchMode at_park, and parkName Frisco Athletic Center. If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
         "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
         "Call unavailable_information when the question requires trail length or route mileage, opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
@@ -207,12 +207,10 @@ function buildReply(results, facilityType, radiusMiles) {
   }
 
   const closest = results[0];
-  const facilityLabel = results.length === 1
-    ? AMENITIES[facilityType].singular
-    : pluralFacilityLabel;
+  const parkLabel = results.length === 1 ? "park" : "parks";
 
   return (
-    `I found ${results.length} nearby ${facilityLabel}. ` +
+    `Showing ${results.length} nearby ${parkLabel} with ${pluralFacilityLabel} (up to five parks). ` +
     `${closest.name || closest.park || "The first result"} is the closest, about ${closest.distanceMiles} miles away.`
   );
 }
@@ -354,11 +352,11 @@ module.exports = async function handler(request, response) {
         ? { parkName: functionCall.args.parkName.trim() } : {}),
     };
     const results = await callFacilityTool(getMcpUrl(request), toolInput);
-    const label = AMENITY_NAMES[facilityType].toLowerCase();
+    const label = AMENITIES[facilityType].plural;
     const reply = toolInput.searchMode === "parks"
-      ? (results.length ? `Here ${results.length === 1 ? "is 1 park" : `are ${results.length} parks`} with ${label}. Ask for parks near you to see the closest options.` : `No parks with ${label} were found in the GIS records.`)
+      ? (results.length ? `Showing ${results.length === 1 ? "1 park" : `${results.length} parks`} (up to five) with ${label}. Ask for parks near you to see the closest options.` : `No parks with ${label} were found in the GIS records.`)
       : toolInput.searchMode === "at_park"
-        ? (results.length ? `The GIS records list ${label} at ${toolInput.parkName}.` : `No matching ${label} points were found for ${toolInput.parkName}; this does not confirm the amenity is absent.`)
+        ? (results.length ? `The GIS records list ${label} at ${results[0].park || toolInput.parkName}.` : `No GIS records for ${label} were found at ${toolInput.parkName}; this does not confirm the amenity is absent.`)
         : buildReply(results, facilityType, radiusMiles);
 
     // Keep attribution separate from the conversational reply. Unavailable
