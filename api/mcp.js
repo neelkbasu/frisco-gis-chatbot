@@ -1,4 +1,6 @@
-const { findNearbyFacilities, AMENITY_NAMES, AMENITY_LOCATION_NOTES } = require("../lib/frisco-gis");
+const { getTrailLengths, addTrailLengths } = require("../lib/trail-lengths");
+const { findNearbyFacilities, getParkAmenities } = require("../lib/frisco-gis");
+const { AMENITIES, AMENITY_NAMES } = require("../lib/amenities");
 
 let nodeHandlerPromise;
 
@@ -13,6 +15,9 @@ async function getNodeHandler() {
       const { createMcpHandler, McpServer } = serverSdk;
       const { toNodeHandler } = nodeSdk;
 
+      const trailLengthSchema = z.object({
+        park: z.string(), name: z.string(), lengthMiles: z.number().positive(), sourceUrl: z.string(),
+      });
       const facilityResultSchema = z.object({
         name: z.string().nullable(),
         park: z.string().nullable(),
@@ -21,6 +26,7 @@ async function getNodeHandler() {
         latitude: z.number().nullable(),
         longitude: z.number().nullable(),
         distanceMiles: z.number().nullable(),
+        trailLengths: z.array(trailLengthSchema).optional(),
         amenities: z.string().nullable().optional(),
         website: z.string().nullable(),
         description: z.string().nullable(),
@@ -42,8 +48,7 @@ async function getNodeHandler() {
             {
               title: "Find nearby Frisco facilities",
               description:
-                `Find nearby amenities, amenities at a named park, or parks with a recorded amenity in City of Frisco GIS. Supported amenities: ${Object.values(AMENITY_NAMES).join(", ")}. ` +
-                "Horseshoe pit searches use park records only; nearby searches return citywide park matches without a radius filter or distances. See the returned note.",
+                "Find nearby amenities, amenities at a named park, or parks with a recorded amenity in City of Frisco GIS. Horseshoe pit matches are citywide park records without a radius filter or distances; see the returned note.",
               inputSchema: z.object({
                 latitude: z.number().min(-90).max(90),
                 longitude: z.number().min(-180).max(180),
@@ -66,8 +71,8 @@ async function getNodeHandler() {
               try {
                 // Reusing this function keeps all ArcGIS logic in one place.
                 // Data flows: AI client -> MCP tool -> Frisco GIS -> MCP result.
-                const results = await findNearbyFacilities(input);
-                const note = AMENITY_LOCATION_NOTES[input.facilityType];
+                const results = await addTrailLengths(await findNearbyFacilities(input));
+                const note = AMENITIES[input.facilityType]?.locationNote;
                 const response = { results, ...(note ? { note } : {}) };
 
                 return {
@@ -92,6 +97,75 @@ async function getNodeHandler() {
               }
             }
           );
+
+          // Answers "does this park have …?" for any number of amenities.
+          server.registerTool(
+            "get_park_amenities",
+            {
+              title: "Get a Frisco park's amenities",
+              description:
+                "Look up one named park in City of Frisco GIS and list every amenity its record includes.",
+              inputSchema: z.object({
+                parkName: z.string().trim().min(1),
+              }),
+              outputSchema: z.object({
+                park: z.object({
+                  name: z.string(),
+                  address: z.string().nullable(),
+                  website: z.string().nullable(),
+                  description: z.string().nullable(),
+                  imageUrl: z.string().nullable(),
+                  amenities: z.array(z.string()),
+                  source: z.literal("City of Frisco GIS"),
+                }).nullable(),
+              }),
+              annotations: {
+                readOnlyHint: true,
+                idempotentHint: true,
+                openWorldHint: true,
+              },
+            },
+            async function runParkAmenities({ parkName }) {
+              try {
+                const response = { park: await getParkAmenities(parkName) };
+
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: JSON.stringify(response, null, 2),
+                    },
+                  ],
+                  structuredContent: response,
+                };
+              } catch (error) {
+                return {
+                  isError: true,
+                  content: [
+                    {
+                      type: "text",
+                      text: `Unable to search the City of Frisco GIS: ${error.message}`,
+                    },
+                  ],
+                };
+              }
+            }
+          );
+
+          server.registerTool("get_trail_lengths", {
+            title: "Get a recorded walking-loop length",
+            description: "Get a verified individual walking-loop length by exact park or loop name. Never sums segments; an empty list means no verified match.",
+            inputSchema: z.object({ placeName: z.string().trim().min(1) }),
+            outputSchema: z.object({ trails: z.array(trailLengthSchema) }),
+            annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+          }, async ({ placeName }) => {
+            try {
+              const response = { trails: await getTrailLengths(placeName) };
+              return { content: [{ type: "text", text: JSON.stringify(response) }], structuredContent: response };
+            } catch {
+              return { isError: true, content: [{ type: "text", text: "Trail length information is temporarily unavailable." }] };
+            }
+          });
 
           return server;
         },

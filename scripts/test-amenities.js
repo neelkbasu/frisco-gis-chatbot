@@ -101,16 +101,17 @@ test("new amenities through MCP and chat", async function (t) {
         assert.equal(results.length, 1);
         assert.equal(results[0].facilityType, type);
         assert.equal(results[0].address, park.Address);
-        const query = queries[0].searchParams;
         const usesParkRecords = searchMode === "parks" || type === "horseshoe_pit";
+        const selectedQuery = queries.find(url => url.pathname.includes(usesParkRecords ? "ParkApp_Testing" : "ParkAmenities_Test"));
+        const query = selectedQuery.searchParams;
         if (usesParkRecords) {
-          assert.ok(queries[0].pathname.includes("ParkApp_Testing"));
+          assert.ok(selectedQuery.pathname.includes("ParkApp_Testing"));
           assert.ok(query.get("where").startsWith(`${field} IS NOT NULL`));
           assert.ok(query.get("outFields").split(",").includes(field));
           assert.equal(results[0].latitude, null);
           assert.equal(results[0].longitude, null);
         } else {
-          assert.ok(queries[0].pathname.includes("ParkAmenities_Test"));
+          assert.ok(selectedQuery.pathname.includes("ParkAmenities_Test"));
           assert.ok(query.get("where").startsWith(`Amenity = '${name}'`));
           assert.equal(query.has("geometry"), searchMode === "nearby");
           if (searchMode === "nearby") {
@@ -171,14 +172,21 @@ test("new amenities through MCP and chat", async function (t) {
   });
 });
 
-test("browser collects locations and displays readable labels for the new amenities", () => {
+test("browser collects locations and displays readable labels for the new amenities", async () => {
   function element() {
-    return { children: [], addEventListener() {}, appendChild(child) { this.children.push(child); } };
+    return { children: [], addEventListener() {}, setAttribute() {}, appendChild(child) { this.children.push(child); } };
   }
-  const context = vm.createContext({ document: {
+  const context = vm.createContext({
+    fetch: async () => Response.json({
+      amenities: require("../lib/amenities").AMENITIES,
+      nearbyPattern: require("../lib/search-language").NEARBY_PATTERN,
+    }),
+    document: {
     querySelector: element, querySelectorAll: () => [], createElement: element,
+    createTextNode: (text) => ({ textContent: text }),
   } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../script.js"), "utf8"), context);
+  await vm.runInContext("loadAmenities()", context);
   for (const [type, name] of amenities) {
     for (const question of [`Find ${name}`, `Where are the ${name} locations?`, `Nearest ${name}`]) {
       assert.equal(context.questionNeedsLocation(question), true, question);
@@ -187,7 +195,7 @@ test("browser collects locations and displays readable labels for the new amenit
     const message = element();
     context.addResultCards(message, [{ facilityType: type, distanceMiles: null }]);
     const details = message.children[0].children[0].children[1].textContent;
-    assert.ok(details.toLowerCase().includes(`type: ${name.toLowerCase()}`), details);
+    assert.ok(details.toLowerCase().includes(`type: ${require("../lib/amenities").AMENITIES[type].singular}`), details);
     assert.ok(!details.includes("Distance:"));
   }
   for (const question of ["Where's the nearest fishing area?", "Where can I fish?", "Where can I play frisbee golf?", "Find off-leash dog areas", "Where can I play horseshoes?"]) {

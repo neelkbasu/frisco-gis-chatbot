@@ -14,6 +14,22 @@ const DEMO_LOCATION = {
   longitude: -96.8236,
 };
 
+// Load the same labels and keywords used by the server. Retry on the next
+// message if the endpoint is temporarily unavailable.
+let amenityDefinitions;
+let nearbyPattern;
+async function loadAmenities() {
+  if (amenityDefinitions) return;
+  const response = await fetch("/api/amenities");
+  if (!response.ok) throw new Error("Could not load supported amenities. Please try again.");
+  const data = await response.json();
+  if (!data.amenities || typeof data.amenities !== "object" || typeof data.nearbyPattern !== "string") {
+    throw new Error("The amenity list was unreadable. Please try again.");
+  }
+  nearbyPattern = new RegExp(data.nearbyPattern, "i");
+  amenityDefinitions = data.amenities;
+}
+
 // This flag prevents a second request while the first one is running.
 let isLoading = false;
 
@@ -31,7 +47,7 @@ function addWalnutAvatar(message) {
 }
 
 // Add a message bubble to the chat area.
-function addMessage(text, sender, results, source, distanceNote) {
+function addMessage(text, sender, results, source, distanceNote, location) {
   const message = document.createElement("div");
   const paragraph = document.createElement("p");
 
@@ -44,7 +60,7 @@ function addMessage(text, sender, results, source, distanceNote) {
 
   if (sender === "assistant" && Array.isArray(results) && results.length > 0) {
     message.classList.add("message-with-results");
-    addResultCards(message, results);
+    addResultCards(message, results, location);
   }
 
   // Show attribution quietly below the cards, including for empty GIS results.
@@ -60,26 +76,52 @@ function addMessage(text, sender, results, source, distanceNote) {
 }
 
 // Show each GIS result without allowing data to become HTML.
-function addResultCards(message, results) {
+function addResultCards(message, results, location) {
   const resultList = document.createElement("div");
   resultList.className = "result-list";
 
-  results.forEach(function (result) {
+  results.forEach(function (result, index) {
     const card = document.createElement("article");
     const title = document.createElement("h3");
     const details = document.createElement("p");
+    const name = result.park || result.name || "Frisco facility";
 
     card.className = "result-card";
-    title.textContent = result.park || result.name || "Frisco facility";
+
+    // Each card has the same number as its pin on the map. Clicking the card
+    // (or its "Show on map" button, for keyboard and screen reader users)
+    // zooms there; cards from older answers redraw their own pins first.
+    let mapButton;
+    if (globalThis.FriscoMap) {
+      const number = document.createElement("span");
+      number.className = "result-number";
+      number.textContent = String(index + 1);
+      number.setAttribute("aria-hidden", "true");
+      title.appendChild(number);
+
+      const showOnMap = function () {
+        globalThis.FriscoMap?.focusResult(result, results, location);
+      };
+      mapButton = document.createElement("button");
+      mapButton.type = "button";
+      mapButton.className = "map-button";
+      mapButton.textContent = `Show #${index + 1} on map`;
+      mapButton.setAttribute("aria-label", `Show ${name} on the map`);
+      mapButton.addEventListener("click", showOnMap);
+
+      card.dataset.onMap = "";
+      card.addEventListener("click", function (event) {
+        if (event.target.closest("a, button")) return;
+        showOnMap();
+      });
+    }
+
+    title.appendChild(document.createTextNode(name));
     details.textContent = [
-      result.facilityType ? `Type: ${{
-        trail: "Walking trail", accessible_trail: "Accessible trail", restroom: "Restroom", parking: "Parking",
-        disc_golf: "Disc golf", dog_park: "Dog park", fishing: "Fishing",
-        fitness_equipment: "Fitness equipment", football: "Football", horseshoe_pit: "Horseshoe pit",
-      }[result.facilityType] || result.facilityType}` : "",
+      result.facilityType ? `Type: ${amenityDefinitions?.[result.facilityType]?.singular || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
       Number.isFinite(result.distanceMiles)
-        ? `Distance: ${result.distanceMiles} miles`
+        ? `Distance from you: ${result.distanceMiles} miles`
         : "",
     ]
       .filter(Boolean)
@@ -88,6 +130,12 @@ function addResultCards(message, results) {
     card.appendChild(title);
     card.appendChild(details);
 
+    for (const trail of result.trailLengths || []) {
+      const length = document.createElement("p");
+      length.textContent = `${trail.name}: ${trail.lengthMiles} miles (recorded loop length)`;
+      card.appendChild(length);
+    }
+
     if (result.website) {
       const website = document.createElement("a");
       website.href = result.website;
@@ -95,6 +143,10 @@ function addResultCards(message, results) {
       website.rel = "noopener noreferrer";
       website.textContent = "Visit park website";
       card.appendChild(website);
+    }
+
+    if (mapButton) {
+      card.appendChild(mapButton);
     }
 
     resultList.appendChild(card);
@@ -119,40 +171,13 @@ function addLoadingMessage() {
 // Nearby facility questions need the browser's current position.
 function questionNeedsLocation(text) {
   const question = text.toLowerCase();
-  const mentionsNearMe = question.includes("near me");
-  const mentionsNearby = [
-    "nearby",
-    "nearest",
-    "closest",
-    "around me",
-    "close to me",
-    "near us",
-    "near you",
-  ].some(function (phrase) {
-    return question.includes(phrase);
-  });
-  const mentionsNewAmenity = /\b(disc golf|frisbee golf|dog parks?|off[- ]leash|fish(?:ing)?|fitness equipment|(?:outdoor )?exercise equipment|football|horseshoes?(?: pits?)?)\b/.test(question);
-  const asksAboutSupportedFacility =
-    question.includes("basketball") ||
-    question.includes("basketball court") ||
-    question.includes("playground") ||
-    /trail|restroom|bathroom|toilet|parking/.test(question) ||
-    mentionsNewAmenity ||
-    question.includes("kids to play");
-
-  // The broader facility check supports requests such as “Where can I play
-  // basketball?” because /api/chat needs coordinates to search City GIS.
-  return (
-    mentionsNearMe ||
-    (asksAboutSupportedFacility && mentionsNearby) ||
-    (mentionsNewAmenity && /\b(find|where|somewhere)\b/.test(question)) ||
-    question.includes("where can i play basketball") ||
-    question.includes("find basketball") ||
-    question.includes("find playground") ||
-    /find.*(trail|restroom|bathroom|toilet|parking)/.test(question) ||
-    question.includes("where is the closest playground") ||
-    question.includes("somewhere for kids to play")
+  const mentionsNearby = nearbyPattern.test(question);
+  const asksAboutSupportedFacility = Object.values(amenityDefinitions || {}).some(
+    (amenity) => amenity.keywords.some((keyword) => question.includes(keyword.toLowerCase()))
   );
+
+  return mentionsNearby ||
+    (asksAboutSupportedFacility && /\b(find|where|somewhere)\b/.test(question));
 }
 
 function getBrowserLocation() {
@@ -268,6 +293,7 @@ async function sendMessage(text) {
   const loadingMessage = addLoadingMessage();
 
   try {
+    await loadAmenities();
     const location = questionNeedsLocation(cleanText)
       ? await getBrowserLocation()
       : null;
@@ -279,8 +305,15 @@ async function sendMessage(text) {
       "assistant",
       data.results,
       data.source,
-      data.distanceNote
+      data.distanceNote,
+      location
     );
+
+    // Answers that searched City GIS also update the map, including empty
+    // results, which clear the previous answer's pins.
+    if (data.source) {
+      globalThis.FriscoMap?.showResults(data.results || [], location);
+    }
   } catch (error) {
     loadingMessage.remove();
     addMessage(error.message, "assistant");

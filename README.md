@@ -1,42 +1,85 @@
 # Ask Walnut
 
-A Frisco parks assistant with a browser frontend, a Gemini-powered chat API,
-and an MCP tool backed by City of Frisco GIS.
+Ask Walnut helps people find parks, recreation facilities, and amenities in
+Frisco, Texas. Ask a question in plain English and get results from City of
+Frisco GIS, including addresses, park websites, and nearby distances.
+
+## What you can ask
+
+- “Find basketball courts near me.”
+- “Which parks have splash pads?”
+- “How long is Frisco Commons Walking Loop?”
+- “Does Frisco Athletic Center have swimming?”
+- “Are there restrooms at Frisco Commons Park?”
+
+Gemini understands your question and searches City of Frisco GIS data.
+Results include up to five parks. Distances are straight-line distances.
+Missing information does not necessarily mean an amenity is absent.
+
+The app does not provide current hours, closures, reservations, directions,
+or complete route planning. Recorded walking-loop lengths are available only
+for verified park matches. Trail cards show loop length separately from distance
+from you. Missing, ambiguous, and segment-only lengths are left out; segments
+are never added together.
 
 ## Run locally
 
-Run these commands from the project folder:
+Install Node.js, then run:
 
-```sh
-npm ci
-cp .env.example .env.local
+```bash
+npm install
 ```
 
-Edit `.env.local` and replace `your_gemini_api_key` with your Gemini API key.
-Then start the full application:
+Create `.env.local` in the project root:
 
-```sh
+```env
+GEMINI_API_KEY=your-key
+```
+
+Start the app:
+
+```bash
 npm run dev:api
 ```
 
-Open **http://127.0.0.1:3000**. This server serves the page, `/api/chat`, and
-`/api/mcp` together. If you set `PORT` in `.env.local`, use that port instead.
-Restart the server after changing `.env.local` or backend code.
+Open http://127.0.0.1:3000. Demo Mode uses a sample Frisco location.
+Turn it off to use your browser's location. Restart the server after editing
+server code or environment variables.
 
-VS Code Live Server (usually port 5500 or 5501) only serves static files. It
-cannot run the chat API. Opening the page there makes `/api/chat` fail, often
-with an empty HTTP 405 response. Use the address printed by `dev:api` for chat.
-`npm run dev:mcp` runs only the MCP endpoint; it does not serve the chat page.
+Each computer needs its own local configuration. Never commit API keys;
+`.env.local` and `node_modules/` are ignored by Git.
 
-Demo Mode starts enabled and uses a sample Frisco location. Turn it off to use
-browser geolocation for nearby searches.
+## Test
 
-## Verify amenities
+Run the automated checks:
 
-```sh
-npm run test:amenities
-npm run test:mcp -- 33.1507 -96.8236 5 fishing nearby
+```bash
+npm test
 ```
 
-The automated suite uses service fixtures. The MCP command queries live GIS
-and does not require a Gemini key.
+These tests check the code using sample data. They do not need an API key.
+
+For a full check, start the app and try the example questions above:
+
+- Keep Demo Mode on to test with the sample Frisco location.
+- Turn it off and allow location access to test nearby searches from your location.
+- Check that cards show park names, available addresses, and website links.
+- Nearby results should show distances and each park once.
+- Named-place and citywide results should not show distances.
+
+Repeat these checks on a Vercel preview before deploying changes.
+
+## Vercel
+
+On Vercel, configure `GEMINI_API_KEY` and `MCP_SERVER_URL` (your deployment's
+`/api/mcp` URL). Local development resolves the MCP URL automatically.
+
+
+For Camilly's amenity and API integration tests, run `npm run test:amenities`.
+These use sample service responses and a local test server.
+
+Horseshoe searches use park records only. They show citywide matches without
+nearby distances because exact pit locations are not recorded.
+
+Use `npm run dev:api` to test the full app; VS Code Live Server cannot run
+the chat API.
