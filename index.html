@@ -30,6 +30,8 @@
         </div>
       </header>
 
+      <!-- Chat on the left, City park map on the right (stacked on phones). -->
+      <div class="workspace">
       <!-- Chat messages are shown here. -->
       <section class="chat-panel" aria-label="Chat with Ask Walnut">
         <div
@@ -110,8 +112,20 @@
           information with official City of Frisco sources.
         </p>
       </section>
+
+      <!-- The City's park map highlights the parks and amenities in each answer. -->
+      <section class="map-panel" aria-label="Map of Frisco parks">
+        <div class="map-header">
+          <h2>Park map</h2>
+          <p id="map-status" class="map-status" role="status">Loading the City park map…</p>
+        </div>
+        <div id="map" class="map"></div>
+      </section>
+      </div>
     </main>
 
     <script src="script.js"></script>
+    <!-- map.js loads the ArcGIS map library itself, after the chat is ready. -->
+    <script src="map.js"></script>
   </body>
 </html>

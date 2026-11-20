@@ -47,7 +47,7 @@ function addWalnutAvatar(message) {
 }
 
 // Add a message bubble to the chat area.
-function addMessage(text, sender, results, source, distanceNote) {
+function addMessage(text, sender, results, source, distanceNote, location) {
   const message = document.createElement("div");
   const paragraph = document.createElement("p");
 
@@ -60,7 +60,7 @@ function addMessage(text, sender, results, source, distanceNote) {
 
   if (sender === "assistant" && Array.isArray(results) && results.length > 0) {
     message.classList.add("message-with-results");
-    addResultCards(message, results);
+    addResultCards(message, results, location);
   }
 
   // Show attribution quietly below the cards, including for empty GIS results.
@@ -76,17 +76,47 @@ function addMessage(text, sender, results, source, distanceNote) {
 }
 
 // Show each GIS result without allowing data to become HTML.
-function addResultCards(message, results) {
+function addResultCards(message, results, location) {
   const resultList = document.createElement("div");
   resultList.className = "result-list";
 
-  results.forEach(function (result) {
+  results.forEach(function (result, index) {
     const card = document.createElement("article");
     const title = document.createElement("h3");
     const details = document.createElement("p");
+    const name = result.park || result.name || "Frisco facility";
 
     card.className = "result-card";
-    title.textContent = result.park || result.name || "Frisco facility";
+
+    // Each card has the same number as its pin on the map. Clicking the card
+    // (or its "Show on map" button, for keyboard and screen reader users)
+    // zooms there; cards from older answers redraw their own pins first.
+    let mapButton;
+    if (globalThis.FriscoMap) {
+      const number = document.createElement("span");
+      number.className = "result-number";
+      number.textContent = String(index + 1);
+      number.setAttribute("aria-hidden", "true");
+      title.appendChild(number);
+
+      const showOnMap = function () {
+        globalThis.FriscoMap?.focusResult(result, results, location);
+      };
+      mapButton = document.createElement("button");
+      mapButton.type = "button";
+      mapButton.className = "map-button";
+      mapButton.textContent = `Show #${index + 1} on map`;
+      mapButton.setAttribute("aria-label", `Show ${name} on the map`);
+      mapButton.addEventListener("click", showOnMap);
+
+      card.dataset.onMap = "";
+      card.addEventListener("click", function (event) {
+        if (event.target.closest("a, button")) return;
+        showOnMap();
+      });
+    }
+
+    title.appendChild(document.createTextNode(name));
     details.textContent = [
       result.facilityType ? `Type: ${amenityDefinitions?.[result.facilityType]?.singular || result.facilityType}` : "",
       result.address ? `Address: ${result.address}` : "Address: Not available",
@@ -113,6 +143,10 @@ function addResultCards(message, results) {
       website.rel = "noopener noreferrer";
       website.textContent = "Visit park website";
       card.appendChild(website);
+    }
+
+    if (mapButton) {
+      card.appendChild(mapButton);
     }
 
     resultList.appendChild(card);
@@ -254,8 +288,15 @@ async function sendMessage(text) {
       "assistant",
       data.results,
       data.source,
-      data.distanceNote
+      data.distanceNote,
+      location
     );
+
+    // Answers that searched City GIS also update the map, including empty
+    // results, which clear the previous answer's pins.
+    if (data.source) {
+      globalThis.FriscoMap?.showResults(data.results || [], location);
+    }
   } catch (error) {
     loadingMessage.remove();
     addMessage(error.message, "assistant");
