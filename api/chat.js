@@ -146,7 +146,7 @@ async function understandRequest(message, latitude, longitude) {
         `Call find_nearby_facilities for these supported types: ${routingDescriptions}. Accessible trails means the recorded accessible-trail category, not a guarantee that the whole park is accessible. ` +
         "Use searchMode parks for 'which parks have restrooms/parking' without nearby wording. Use nearby for nearest, closest, or nearby searches. Include parkName if the resident names their park; expand an unambiguous name such as Frisco Commons to Frisco Commons Park. Use at_park for named-place amenity questions without nearby wording, including athletic centers and sports complexes. Questions asking whether a place has an amenity are supported, not unavailable details. For example, Does Frisco Athletic Center have swimming? must call find_nearby_facilities with the requested facilityType, searchMode at_park, and parkName Frisco Athletic Center. When the resident names one park or facility and asks about two or more amenities, or asks what it has in general, call get_park_amenities instead and include every amenity they mention; for example, Does J.C. Grant Park have a playground, picnic areas, or a dog park?If they say 'this park' without naming it, ask which park through clarification instead of guessing. " +
         "Treat an unqualified request for nearby courts as basketball courts. " +
-        "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. " +
+        "Use the supplied validated coordinates. Use a 5-mile radius unless the resident explicitly asks for another radius. Horseshoe pit searches provide citywide park matches without distances; never promise nearby pit locations. " +
         "For a trail-length question, call get_trail_lengths with the named park or walking loop, expanding a clear park abbreviation to its full name. If no trail or park is named, call clarify_park. Never combine segment lengths or infer an accessible route length from a walking loop. Call unavailable_information when the question requires opening hours, live closures or operating status, parking availability or fees, reservations, directions, or other details the search tool cannot answer. Do not substitute a facility search for an unavailable detail. Use this tool for unsupported topics too. For a question mixing an amenity search with an unavailable detail, explain the limitation using unavailable_information. " +
         "Do not call the tool for any other topic. Never invent facility information or trail lengths.",
       tools: [{ functionDeclarations: [facilityTool, parkAmenitiesTool, {
@@ -227,13 +227,13 @@ async function callMcpTool(mcpUrl, name, input) {
 }
 
 async function callFacilityTool(mcpUrl, input) {
-  const { results } = await callMcpTool(mcpUrl, "find_nearby_facilities", input);
+  const { results, note } = await callMcpTool(mcpUrl, "find_nearby_facilities", input);
 
   if (!Array.isArray(results)) {
     throw new Error("The Frisco GIS tool returned an unexpected response.");
   }
 
-  return results;
+  return { results, note };
 }
 
 // Create a concise reply using only facts already returned by City GIS.
@@ -506,19 +506,22 @@ module.exports = async function handler(request, response) {
       ...(typeof functionCall.args?.parkName === "string" && functionCall.args.parkName.trim()
         ? { parkName: functionCall.args.parkName.trim() } : {}),
     };
-    const results = await callFacilityTool(getMcpUrl(request), toolInput);
+    const { results, note } = await callFacilityTool(getMcpUrl(request), toolInput);
     const label = AMENITIES[facilityType].plural;
-    const reply = toolInput.searchMode === "parks"
-      ? (results.length ? `Showing ${results.length === 1 ? "1 park" : `${results.length} parks`} (up to five) with ${label}. Ask for parks near you to see the closest options.` : `No parks with ${label} were found in the GIS records.`)
+    let reply = toolInput.searchMode === "parks"
+      ? (results.length ? `Showing ${results.length === 1 ? "1 park" : `${results.length} parks`} (up to five) with ${label}. ${note ? "" : "Ask for parks near you to see the closest options."}` : `No parks with ${label} were found in the GIS records.`)
       : toolInput.searchMode === "at_park"
         ? (results.length ? `The GIS records list ${label} at ${results[0].park || toolInput.parkName}.` : `No GIS records for ${label} were found at ${toolInput.parkName}; this does not confirm the amenity is absent.`)
-        : buildReply(results, facilityType, radiusMiles);
+        : note
+          ? (results.length ? `Showing ${results.length} parks with ${label}. These matches are not filtered by distance.` : `No parks with ${label} were found in the GIS records.`)
+          : buildReply(results, facilityType, radiusMiles);
+    if (note) reply += ` ${note}`;
 
     // Keep attribution separate from the conversational reply. Unavailable
     // trail mileage is explained only when asked, through the existing tool.
     sendJson(response, 200, {
       reply, results, source: "City of Frisco GIS",
-      distanceNote: toolInput.searchMode === "nearby" && results.length
+      distanceNote: toolInput.searchMode === "nearby" && results.some((result) => Number.isFinite(result.distanceMiles))
         ? "Straight-line distances" : null,
     });
   } catch (error) {

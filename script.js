@@ -241,7 +241,24 @@ async function askChatApi(message, location) {
   try {
     data = await response.json();
   } catch (error) {
-    throw new Error("The assistant returned an unreadable response.");
+    // Static preview servers cannot execute /api/chat and may send an empty
+    // 405 or an HTML page. Explain how to start the API instead of hiding it
+    // behind a JSON parsing error.
+    const contentType = response.headers.get("content-type") || "";
+    if ([404, 405].includes(response.status) || (response.ok && contentType.includes("text/html"))) {
+      const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+      throw new Error(isLocal
+        ? "The chat API is not running at this address. Start the app with npm run dev:api, then open http://127.0.0.1:3000."
+        : "The chat API is unavailable at this address. Please try again later.");
+    }
+    if ([502, 503, 504].includes(response.status)) {
+      throw new Error("The chat service is temporarily unavailable or timed out. Please try again in a moment.");
+    }
+    throw new Error(`The chat API returned an invalid response (HTTP ${response.status}). Please try again.`);
+  }
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("The chat API returned an unexpected response. Please try again.");
   }
 
   if (!response.ok || data.error) {

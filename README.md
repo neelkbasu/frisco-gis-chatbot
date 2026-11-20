@@ -73,3 +73,13 @@ Repeat these checks on a Vercel preview before deploying changes.
 
 On Vercel, configure `GEMINI_API_KEY` and `MCP_SERVER_URL` (your deployment's
 `/api/mcp` URL). Local development resolves the MCP URL automatically.
+
+
+For Camilly's amenity and API integration tests, run `npm run test:amenities`.
+These use sample service responses and a local test server.
+
+Horseshoe searches use park records only. They show citywide matches without
+nearby distances because exact pit locations are not recorded.
+
+Use `npm run dev:api` to test the full app; VS Code Live Server cannot run
+the chat API.
